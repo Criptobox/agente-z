@@ -70,13 +70,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Build dashboard artifact
+        run: |
+          mkdir -p ./_site
+          # Copiar dashboard a la raíz del artifact
+          cp -r ./dashboard/* ./_site/
+          # Crear directorio data/ con memoria y tareas para que el dashboard pueda hacer fetch
+          mkdir -p ./_site/data/memory ./_site/data/tasks
+          # Copiar solo los JSON que el dashboard necesita (no los .md que pueden contener info sensible)
+          [ -f ./memory/index.json ] && cp ./memory/index.json ./_site/data/memory/
+          [ -f ./memory/stats.json ] && cp ./memory/stats.json ./_site/data/memory/
+          [ -f ./memory/vectors.json ] && cp ./memory/vectors.json ./_site/data/memory/
+          [ -f ./memory/diary/index.json ] && cp ./memory/diary/index.json ./_site/data/memory/diary-index.json
+          [ -f ./memory/budget/index.json ] && cp ./memory/budget/index.json ./_site/data/memory/budget-index.json
+          [ -d ./memory/diary ] && cp -r ./memory/diary ./_site/data/memory/diary 2>/dev/null || true
+          [ -d ./memory/budget ] && cp -r ./memory/budget ./_site/data/memory/budget 2>/dev/null || true
+          [ -f ./tasks/index.json ] && cp ./tasks/index.json ./_site/data/tasks/
+          [ -d ./tasks ] && cp ./tasks/*.json ./_site/data/tasks/ 2>/dev/null || true
+          # Listar contenido para debug
+          echo "=== Contenido del artifact ==="
+          find ./_site -type f | head -30
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dashboard
+          path: ./_site
 
       - name: Deploy to GitHub Pages
         id: deployment
