@@ -492,47 +492,81 @@
         <section class="view" id="view-inventory">
           <div class="view__header">
             <h2 class="view__title">📦 Inventario</h2>
-            <button class="btn btn--analyze" id="compare-inventory-btn">
+            <button class="btn btn--analyze" id="compare-inventory-btn" disabled>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 12 12 5 19 12"/><line x1="12" y1="5" x2="12" y2="19"/></svg>
-              <span>Comparar ahora</span>
+              <span>Analizar</span>
             </button>
           </div>
 
-          <!-- Setup card: configurar qué repos comparar -->
-          <div class="panel" id="inventory-setup" style="margin-bottom: var(--s-4)">
-            <div class="panel__header">
-              <h3 class="panel__title">⚙️ Configuración</h3>
-            </div>
-            <div class="panel__body">
-              <p style="color: var(--text-secondary); font-size: 13px; margin: 0 0 var(--s-4); line-height: 1.6">
-                Compara productos entre dos repos de GitHub. Detecta agotados, nuevos, desaparecidos y stock bajo.
-                Notifica automáticamente cada día a las 9 AM.
-              </p>
-              <div class="form-grid">
-                <div class="field">
-                  <label class="field__label">Repo A (referencia)</label>
-                  <input class="field__input" type="text" id="inv-repo-a" placeholder="axontech/axon-store" autocomplete="off">
-                  <p class="field__hint">Ej: <code>axontech/axon-store</code></p>
+          <!-- Hero del inventario: un solo input -->
+          <div class="inv-hero">
+            <div class="inv-hero__glow"></div>
+            <div class="inv-hero__content">
+              <div class="inv-hero__mode-toggle">
+                <button class="mode-toggle__btn is-active" data-mode="single">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <span>Analizar un repo</span>
+                </button>
+                <button class="mode-toggle__btn" data-mode="compare">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                  <span>Comparar dos repos</span>
+                </button>
+              </div>
+
+              <h3 class="inv-hero__title" id="inv-hero-title">Pega el link del repo a analizar</h3>
+              <p class="inv-hero__desc" id="inv-hero-desc">El sistema detecta automáticamente el archivo de productos, los campos (id, stock, precio) y genera un reporte completo con agotados, nuevos, stock bajo y más.</p>
+
+              <!-- Modo single: un input -->
+              <div class="inv-hero__input-wrap" id="inv-single-wrap">
+                <div class="inv-hero__input-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
                 </div>
-                <div class="field">
-                  <label class="field__label">Repo B (a comparar)</label>
-                  <input class="field__input" type="text" id="inv-repo-b" placeholder="tiendamax/tiendamax-web" autocomplete="off">
-                  <p class="field__hint">Ej: <code>tiendamax/tiendamax-web</code></p>
+                <input class="inv-hero__input" type="text" id="inv-repo-url" placeholder="https://github.com/usuario/repo" autocomplete="off" spellcheck="false">
+                <kbd class="inv-hero__kbd">⏎</kbd>
+              </div>
+
+              <!-- Modo compare: dos inputs -->
+              <div class="inv-compare-wrap" id="inv-compare-wrap" hidden>
+                <div class="inv-compare-input">
+                  <label class="inv-compare-label">Repo A (referencia)</label>
+                  <div class="inv-hero__input-wrap inv-hero__input-wrap--sm">
+                    <div class="inv-hero__input-icon">
+                      <span style="font-weight:700;color:var(--info)">A</span>
+                    </div>
+                    <input class="inv-hero__input" type="text" id="inv-repo-a" placeholder="axontech/axon-store" autocomplete="off">
+                  </div>
                 </div>
-                <div class="field">
-                  <label class="field__label">Path productos A (opcional)</label>
-                  <input class="field__input" type="text" id="inv-path-a" placeholder="products.json" autocomplete="off">
-                  <p class="field__hint">Vacío = detección automática</p>
+                <div class="inv-compare-vs">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
                 </div>
-                <div class="field">
-                  <label class="field__label">Path productos B (opcional)</label>
-                  <input class="field__input" type="text" id="inv-path-b" placeholder="data/products.json" autocomplete="off">
-                  <p class="field__hint">Vacío = detección automática</p>
+                <div class="inv-compare-input">
+                  <label class="inv-compare-label">Repo B (a comparar)</label>
+                  <div class="inv-hero__input-wrap inv-hero__input-wrap--sm">
+                    <div class="inv-hero__input-icon">
+                      <span style="font-weight:700;color:var(--success)">B</span>
+                    </div>
+                    <input class="inv-hero__input" type="text" id="inv-repo-b" placeholder="tiendamax/tiendamax-web" autocomplete="off">
+                  </div>
                 </div>
               </div>
-              <div class="info-banner" style="margin-top: var(--s-4)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                <span>Para automatizar el diario, configura también las variables <code>INVENTORY_REPO_A</code> y <code>INVENTORY_REPO_B</code> en Settings → Actions → Variables.</span>
+
+              <div class="inv-hero__chips">
+                <button class="inv-chip" data-example="facebook/react">
+                  <span class="inv-chip__icon">⚛️</span>
+                  <span>facebook/react</span>
+                </button>
+                <button class="inv-chip" data-example="twbs/bootstrap">
+                  <span class="inv-chip__icon">🅱️</span>
+                  <span>twbs/bootstrap</span>
+                </button>
+                <button class="inv-chip" data-example="tailwindlabs/tailwindcss">
+                  <span class="inv-chip__icon">🎨</span>
+                  <span>tailwindlabs/tailwindcss</span>
+                </button>
+                <button class="inv-chip" data-example="microsoft/vscode">
+                  <span class="inv-chip__icon">💻</span>
+                  <span>microsoft/vscode</span>
+                </button>
               </div>
             </div>
           </div>

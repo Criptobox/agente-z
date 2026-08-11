@@ -928,26 +928,96 @@ function attachEvents() {
   });
 
   // ─── Inventory ───
+  // Estado del modo (single vs compare)
+  state.inventoryMode = 'single';
+
   // Cargar valores guardados
-  const savedRepoA = localStorage.getItem('inv-repo-a');
+  const savedRepo = localStorage.getItem('inv-repo-a');
+  if (savedRepo) $('#inv-repo-url').value = savedRepo;
   const savedRepoB = localStorage.getItem('inv-repo-b');
-  if (savedRepoA) $('#inv-repo-a').value = savedRepoA;
   if (savedRepoB) $('#inv-repo-b').value = savedRepoB;
 
-  $('#compare-inventory-btn')?.addEventListener('click', () => {
-    const repoA = $('#inv-repo-a').value.trim();
-    const repoB = $('#inv-repo-b').value.trim();
-    const pathA = $('#inv-path-a').value.trim();
-    const pathB = $('#inv-path-b').value.trim();
-    if (!repoA || !repoB) {
-      toast('Especifica los dos repos a comparar', '⚠️');
-      return;
+  const invInput = $('#inv-repo-url');
+  const invInputB = $('#inv-repo-b');
+  const invBtn = $('#compare-inventory-btn');
+
+  const isValidRepo = (v) => /^(https?:\/\/github\.com\/)?[a-z0-9_-]+\/[a-z0-9_.-]+$/i.test(v);
+
+  const updateInvBtn = () => {
+    if (state.inventoryMode === 'single') {
+      invBtn.disabled = !isValidRepo(invInput.value.trim());
+    } else {
+      const a = invInput.value.trim();
+      const b = invInputB.value.trim();
+      invBtn.disabled = !isValidRepo(a) || !isValidRepo(b);
     }
-    // Guardar para próxima vez
-    localStorage.setItem('inv-repo-a', repoA);
-    localStorage.setItem('inv-repo-b', repoB);
-    compareInventoriesNow(repoA, repoB, pathA, pathB);
+  };
+
+  invInput.addEventListener('input', updateInvBtn);
+  invInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !invBtn.disabled) { e.preventDefault(); invBtn.click(); }
   });
+  invInputB.addEventListener('input', updateInvBtn);
+  invInputB.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !invBtn.disabled) { e.preventDefault(); invBtn.click(); }
+  });
+
+  // Mode toggle
+  $$('.mode-toggle__btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.mode;
+      state.inventoryMode = mode;
+      $$('.mode-toggle__btn').forEach(b => b.classList.toggle('is-active', b.dataset.mode === mode));
+      if (mode === 'single') {
+        $('#inv-single-wrap').hidden = false;
+        $('#inv-compare-wrap').hidden = true;
+        $('#inv-hero-title').textContent = 'Pega el link del repo a analizar';
+        $('#inv-hero-desc').textContent = 'El sistema detecta automáticamente el archivo de productos, los campos (id, stock, precio) y genera un reporte completo con agotados, stock bajo y más.';
+      } else {
+        $('#inv-single-wrap').hidden = true;
+        $('#inv-compare-wrap').hidden = false;
+        $('#inv-hero-title').textContent = 'Compara dos repos entre sí';
+        $('#inv-hero-desc').textContent = 'Detecta productos agotados, nuevos, desaparecidos y stock bajo entre dos repos. Útil para ver qué falta agregar de A a B.';
+      }
+      updateInvBtn();
+    });
+  });
+
+  // Chips de ejemplo (en modo single llenan el input principal, en compare llenan el A)
+  $$('.inv-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const ex = chip.dataset.example;
+      if (state.inventoryMode === 'single') {
+        invInput.value = ex;
+      } else {
+        invInput.value = ex;
+      }
+      updateInvBtn();
+      invBtn.click();
+    });
+  });
+
+  invBtn?.addEventListener('click', () => {
+    if (state.inventoryMode === 'single') {
+      const url = invInput.value.trim();
+      const normalized = url.replace(/^https?:\/\/github\.com\//i, '').replace(/\/$/, '');
+      localStorage.setItem('inv-repo-a', normalized);
+      analyzeSingleRepoInventory(normalized);
+    } else {
+      const urlA = invInput.value.trim();
+      const urlB = invInputB.value.trim();
+      const normalizedA = urlA.replace(/^https?:\/\/github\.com\//i, '').replace(/\/$/, '');
+      const normalizedB = urlB.replace(/^https?:\/\/github\.com\//i, '').replace(/\/$/, '');
+      localStorage.setItem('inv-repo-a', normalizedA);
+      localStorage.setItem('inv-repo-b', normalizedB);
+      compareInventoriesNow(normalizedA, normalizedB, null, null);
+    }
+  });
+
+  // Notificaciones PWA: pedir permiso al entrar a inventario
+  // (mejor momento contextual que pedirlo al cargar todo el dashboard)
+  // Se pide bajo demanda cuando el usuario hace una acción relevante
+  // implementado en requestNotificationPermission() y notifyProductChange()
 
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
@@ -1671,7 +1741,7 @@ function diffInventoriesClient(productsA, productsB, labelA, labelB) {
 async function compareInventoriesNow(repoA, repoB, pathA, pathB) {
   const token = localStorage.getItem('agent-brain-pat') || state.token || '';
   const el = $('#inventory-result');
-  el.innerHTML = '<div class="inv-loading">Comparando inventarios…</div>';
+  el.innerHTML = '<div class="inv-loading"><div class="inv-loading__spinner"></div><div>Comparando inventarios…</div></div>';
 
   try {
     let fileA, fileB;
@@ -1710,6 +1780,220 @@ async function compareInventoriesNow(repoA, repoB, pathA, pathB) {
   } catch (err) {
     el.innerHTML = `<div class="inv-empty"><div class="inv-empty__icon">❌</div><div class="inv-empty__text">Error: ${escapeHtml(err.message)}</div></div>`;
   }
+}
+
+// ─── Análisis de inventario de UN solo repo ───
+// El usuario pega un link y el sistema detecta todo: archivo, campos, productos.
+async function analyzeSingleRepoInventory(repo) {
+  const token = localStorage.getItem('agent-brain-pat') || state.token || '';
+  const el = $('#inventory-result');
+  el.innerHTML = '<div class="inv-loading"><div class="inv-loading__spinner"></div><div>Analizando repo…</div></div>';
+
+  try {
+    // 1. Buscar archivo de productos automáticamente
+    const file = await findInventoryFileClient(repo, token);
+    if (!file) {
+      el.innerHTML = `
+        <div class="inv-empty">
+          <div class="inv-empty__icon">🔍</div>
+          <div class="inv-empty__text">
+            No se encontró archivo de productos en <code>${escapeHtml(repo)}</code>.<br>
+            Patrones buscados: products.json, inventory.json, data/products.json, etc.<br><br>
+            <strong>Soluciones:</strong><br>
+            • Verifica que el repo tenga un archivo de productos<br>
+            • O configura un segundo repo para comparar (próximamente)
+          </div>
+        </div>`;
+      return;
+    }
+
+    // 2. Parsear productos
+    const products = parseInventory(file.content, file.path);
+    if (!products.length) {
+      el.innerHTML = `<div class="inv-empty"><div class="inv-empty__icon">⚠️</div><div class="inv-empty__text">Se encontró <code>${escapeHtml(file.path)}</code> pero no se pudieron parsear productos.</div></div>`;
+      return;
+    }
+
+    // 3. Detectar campos automáticamente
+    const sample = products[0];
+    const idField = detectIdField(sample);
+    const stockField = detectStockField(sample);
+    const nameField = detectNameField(sample);
+    const priceField = detectPriceField(sample);
+
+    // 4. Clasificar productos
+    const agotados = [];
+    const stockBajo = [];
+    const disponibles = [];
+    let totalValue = 0;
+
+    for (const p of products) {
+      const id = p[idField];
+      if (id == null) continue;
+      const stock = stockField ? Number(p[stockField]) || 0 : null;
+      const price = priceField ? Number(p[priceField]) || 0 : null;
+      const name = p[nameField] || id;
+
+      if (stock === 0) {
+        agotados.push({ id: String(id), name, stock: 0, price });
+      } else if (stock !== null && stock < 5) {
+        stockBajo.push({ id: String(id), name, stock, price });
+      } else if (stock !== null && stock > 0) {
+        disponibles.push({ id: String(id), name, stock, price });
+        if (price) totalValue += price * stock;
+      }
+    }
+
+    // 5. Render reporte
+    renderSingleRepoReport({
+      repo,
+      file: file.path,
+      totalProducts: products.length,
+      fields: { id: idField, stock: stockField, name: nameField, price: priceField },
+      agotados,
+      stockBajo,
+      disponibles,
+      totalValue,
+      summary: {
+        total: products.length,
+        agotados: agotados.length,
+        stockBajo: stockBajo.length,
+        disponibles: disponibles.length,
+      },
+    });
+  } catch (err) {
+    el.innerHTML = `<div class="inv-empty"><div class="inv-empty__icon">❌</div><div class="inv-empty__text">Error: ${escapeHtml(err.message)}</div></div>`;
+  }
+}
+
+function renderSingleRepoReport(report) {
+  const el = $('#inventory-result');
+  const s = report.summary;
+  const fmtPrice = (p) => p != null ? `$${Number(p).toFixed(2)}` : '';
+
+  const kpis = [
+    { value: s.total, label: 'total productos', cls: '', icon: '📦' },
+    { value: s.disponibles, label: 'disponibles', cls: 'inv-kpi--success', icon: '✅' },
+    { value: s.agotados, label: 'agotados', cls: s.agotados > 0 ? 'inv-kpi--danger' : 'inv-kpi--success', icon: '🔴' },
+    { value: s.stockBajo, label: 'stock bajo', cls: s.stockBajo > 0 ? 'inv-kpi--warning' : '', icon: '⚠️' },
+  ];
+  if (report.totalValue > 0) {
+    kpis.push({ value: '$' + (report.totalValue < 1000 ? report.totalValue.toFixed(0) : (report.totalValue / 1000).toFixed(1) + 'k'), label: 'valor inventario', cls: 'inv-kpi--info', icon: '💰' });
+  }
+
+  // Guardar reporte para exportar CSV
+  state.lastInventoryReport = report;
+  // Guardar entrada en histórico + snapshot (silencioso)
+  saveInventoryHistoryEntry(report);
+  saveInventorySnapshot(report);
+  // Verificar alertas custom
+  checkCustomAlerts(report);
+
+  // Detectar moneda y preparar selector
+  const detectedCurrency = detectCurrency(report);
+  const currentCurrency = state.inventoryCurrency || detectedCurrency;
+  const currencies = ['USD', 'EUR', 'MXN', 'CUP', 'ARS', 'COP', 'CLP', 'PEN'];
+
+  const fmtPriceConverted = (p) => {
+    if (p == null) return '';
+    const converted = convertPrice(Number(p), detectedCurrency, currentCurrency);
+    return formatPriceCurrency(converted, currentCurrency);
+  };
+
+  const headers = ['ID', 'Nombre', 'Stock'];
+  if (report.fields.price) headers.push('Precio');
+
+  const makeSection = (id, title, icon, cls, items, delays) => {
+    if (!items.length) return '';
+    return `
+      <div class="inv-section inv-section--${cls}" style="animation-delay: ${delays}s" data-section-id="${id}">
+        <div class="inv-section__header">
+          <h3 class="inv-section__title">${icon} ${title}</h3>
+          <span class="inv-section__count">${items.length}</span>
+          <div class="inv-section__search">
+            <span class="inv-section__search-icon">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </span>
+            <input type="text" data-search-section="${id}" placeholder="Filtrar…" autocomplete="off">
+          </div>
+          <button class="inv-section__export" data-export="${id}">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            CSV
+          </button>
+        </div>
+        <table class="inv-table">
+          <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+          <tbody data-tbody="${id}">
+            ${items.slice(0, 50).map(p => `
+              <tr data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}">
+                <td>${escapeHtml(p.id)}</td>
+                <td>${escapeHtml(p.name)}</td>
+                <td class="inv-stock inv-stock--${cls === 'danger' ? 'zero' : cls === 'warning' ? 'low' : 'ok'}">${p.stock}</td>
+                ${report.fields.price ? `<td class="inv-price">${fmtPriceConverted(p.price)}</td>` : ''}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        ${items.length > 50 ? `<div class="inv-section__more" data-more="${id}" style="padding: var(--s-3); text-align: center; color: var(--text-muted); font-size: 12px">y ${items.length - 50} más (usa el filtro para encontrar)</div>` : ''}
+      </div>`;
+  };
+
+  el.innerHTML = `
+    <div class="info-banner" style="margin-bottom: var(--s-4)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <span>Repo: <strong>${escapeHtml(report.repo)}</strong> · Archivo: <code>${escapeHtml(report.file)}</code> · Campos: id=<code>${escapeHtml(report.fields.id)}</code>, stock=<code>${escapeHtml(report.fields.stock || '?')}</code>, name=<code>${escapeHtml(report.fields.name)}</code>${report.fields.price ? `, price=<code>${escapeHtml(report.fields.price)}</code>` : ''}</span>
+    </div>
+    <div class="inv-toolbar">
+      <div class="info-banner" style="margin: 0; padding: 6px 12px; font-size: 11px">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <span>Reporte generado en ${new Date().toLocaleTimeString('es')}</span>
+      </div>
+      <div class="inv-toolbar__actions">
+        ${report.fields.price ? `
+          <select class="inv-toolbar__btn" id="inv-currency-sel" style="padding: 7px 8px;">
+            ${currencies.map(c => `<option value="${c}" ${c === currentCurrency ? 'selected' : ''}>${c}</option>`).join('')}
+          </select>
+        ` : ''}
+        <button class="inv-toolbar__btn" id="inv-history-btn" title="Ver histórico">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <span>Histórico</span>
+        </button>
+        <button class="inv-toolbar__btn" id="inv-alerts-btn" title="Alertas custom">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span>Alertas</span>
+        </button>
+        <button class="inv-toolbar__btn" id="inv-heatmap-btn" title="Mapa de calor">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4 4 0 1 0 5 0z"/></svg>
+          <span>Heatmap</span>
+        </button>
+        <button class="inv-toolbar__btn" id="inv-prediction-btn" title="Predicción de demanda">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2"/><path d="M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0z"/></svg>
+          <span>Predicción</span>
+        </button>
+        <button class="inv-toolbar__btn" id="inv-suppliers-btn" title="Proveedores">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          <span>Proveedores</span>
+        </button>
+        <button class="inv-toolbar__btn" id="inv-shopify-btn" title="Conectar tienda Shopify/WooCommerce">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+          <span>Tienda</span>
+        </button>
+        <button class="inv-toolbar__btn" data-export="all">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>CSV</span>
+        </button>
+      </div>
+    </div>
+    <div class="inv-kpi-grid">
+      ${kpis.map(k => `<div class="inv-kpi ${k.cls}"><div class="inv-kpi__icon">${k.icon}</div><div class="inv-kpi__value">${k.value}</div><div class="inv-kpi__label">${k.label}</div></div>`).join('')}
+    </div>
+    ${makeSection('agotados', 'Agotados (stock = 0)', '🔴', 'danger', report.agotados, 0.1)}
+    ${makeSection('stockBajo', 'Stock bajo (< 5 unidades)', '⚠️', 'warning', report.stockBajo, 0.2)}
+    ${makeSection('disponibles', 'Disponibles', '✅', 'success', report.disponibles, 0.3)}
+  `;
+
+  // Attach search + export listeners
+  attachInventorySectionListeners(report);
 }
 
 function renderInventoryReport(report) {
@@ -1841,7 +2125,1259 @@ async function init() {
   registerSW();
   await loadAll();
   startAutoPoll();
+  // Pedir permiso de notificaciones silenciosamente (sin bloquear si se rechaza)
+  // El permiso se pide con contexto cuando el usuario usa Inventario
 }
+
+// ─── Inventory: search filter + CSV export ───
+function attachInventorySectionListeners(report) {
+  // Search filter por sección
+  $$('[data-search-section]').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const sectionId = e.target.dataset.searchSection;
+      const q = e.target.value.toLowerCase().trim();
+      const tbody = $(`[data-tbody="${sectionId}"]`);
+      if (!tbody) return;
+      const rows = tbody.querySelectorAll('tr');
+      let visible = 0;
+      rows.forEach(row => {
+        const id = (row.dataset.id || '').toLowerCase();
+        const name = (row.dataset.name || '').toLowerCase();
+        const match = !q || id.includes(q) || name.includes(q);
+        row.style.display = match ? '' : 'none';
+        if (match) visible++;
+      });
+      const moreEl = $(`[data-more="${sectionId}"]`);
+      if (moreEl) {
+        moreEl.textContent = q
+          ? `${visible} de ${rows.length} coinciden`
+          : `y ${report[sectionId].length - 50} más (usa el filtro para encontrar)`;
+      }
+    });
+  });
+
+  // Export CSV por sección
+  $$('[data-export]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sectionId = btn.dataset.export;
+      if (sectionId === 'all') {
+        exportInventoryCSV(report);
+      } else {
+        exportInventoryCSV(report, sectionId);
+      }
+    });
+  });
+
+  // Botón "ver histórico"
+  $('#inv-history-btn')?.addEventListener('click', () => {
+    showHistoryModal(report.repo);
+  });
+
+  // Botón "alertas custom"
+  $('#inv-alerts-btn')?.addEventListener('click', () => {
+    showAlertsModal(report);
+  });
+
+  // Botón "mapa de calor"
+  $('#inv-heatmap-btn')?.addEventListener('click', () => {
+    showHeatmapModal(report.repo);
+  });
+
+  // Botón "predicción"
+  $('#inv-prediction-btn')?.addEventListener('click', () => {
+    showPredictionModal(report.repo);
+  });
+
+  // Botón "proveedores"
+  $('#inv-suppliers-btn')?.addEventListener('click', () => {
+    showSuppliersModal(report);
+  });
+
+  // Botón "webhook Shopify"
+  $('#inv-shopify-btn')?.addEventListener('click', () => {
+    showShopifyModal(report.repo);
+  });
+
+  // Selector de moneda
+  $('#inv-currency-sel')?.addEventListener('change', (e) => {
+    state.inventoryCurrency = e.target.value;
+    renderSingleRepoReport(state.lastInventoryReport);
+  });
+}
+
+// ─── Proveedores (auto-reabastecimiento) ───
+const SUPPLIERS_KEY = 'agent-brain-inv-suppliers';
+
+function loadSuppliers() {
+  try { return JSON.parse(localStorage.getItem(SUPPLIERS_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveSuppliers(list) {
+  localStorage.setItem(SUPPLIERS_KEY, JSON.stringify(list));
+}
+
+function showSuppliersModal(report) {
+  let modal = $('#suppliers-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'suppliers-modal';
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__panel">
+        <div class="modal__header">
+          <h2 class="modal__title">🚚 Proveedores</h2>
+          <button class="icon-btn icon-btn--ghost" data-close>×</button>
+        </div>
+        <div class="modal__body" id="suppliers-modal-body"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => {
+      if (e.target.matches('[data-close]') || e.target.closest('[data-close]')) {
+        modal.hidden = true;
+      }
+    });
+  }
+  const body = $('#suppliers-modal-body');
+  const allProducts = [
+    ...(report.agotados || []).map(p => ({ ...p, status: 'agotado' })),
+    ...(report.stockBajo || []).map(p => ({ ...p, status: 'bajo' })),
+    ...(report.disponibles || []).map(p => ({ ...p, status: 'ok' })),
+  ];
+  body.innerHTML = `
+    <p style="color:var(--text-secondary);font-size:13px;margin:0 0 var(--s-3);line-height:1.6">
+      Asigna un proveedor a cada producto. Cuando un producto está agotado o con stock bajo, muestra su contacto y crea una orden de reabastecimiento sugerida.
+    </p>
+    <div class="field">
+      <label class="field__label">Producto</label>
+      <select class="field__input" id="sup-product">
+        ${allProducts.slice(0, 200).map(p => `<option value="${escapeHtml(p.id)}|${escapeHtml(p.name)}|${p.stock}">${escapeHtml(p.id)} — ${escapeHtml(p.name)} (stock: ${p.stock})</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label class="field__label">Proveedor</label>
+        <input class="field__input" type="text" id="sup-name" placeholder="ACME Distribuciones">
+      </div>
+      <div class="field">
+        <label class="field__label">Contacto (email/tel)</label>
+        <input class="field__input" type="text" id="sup-contact" placeholder="ventas@acme.com">
+      </div>
+      <div class="field">
+        <label class="field__label">Cantidad a pedir</label>
+        <input class="field__input" type="number" id="sup-qty" value="20" min="1">
+      </div>
+      <div class="field">
+        <label class="field__label">Lead time (días)</label>
+        <input class="field__input" type="number" id="sup-lead" value="7" min="1">
+      </div>
+    </div>
+    <button class="btn btn--primary" id="add-supplier-btn" style="margin-bottom: var(--s-4)">
+      <span>+ Asignar proveedor</span>
+    </button>
+    <div id="suppliers-list"></div>
+    <div id="reorder-suggestions"></div>
+  `;
+  renderSuppliersList(report.repo, report);
+  $('#add-supplier-btn').addEventListener('click', () => {
+    const sel = $('#sup-product').value.split('|');
+    const suppliers = loadSuppliers();
+    suppliers.push({
+      repo: report.repo,
+      productId: sel[0],
+      productName: sel[1] || sel[0],
+      currentStock: parseInt(sel[2], 10) || 0,
+      supplier: $('#sup-name').value.trim(),
+      contact: $('#sup-contact').value.trim(),
+      reorderQty: parseInt($('#sup-qty').value, 10) || 20,
+      leadTime: parseInt($('#sup-lead').value, 10) || 7,
+      created: Date.now(),
+    });
+    saveSuppliers(suppliers);
+    renderSuppliersList(report.repo, report);
+    toast('Proveedor asignado', '🚚');
+  });
+  modal.hidden = false;
+}
+
+function renderSuppliersList(repo, report) {
+  const el = $('#suppliers-list');
+  if (!el) return;
+  const list = loadSuppliers().filter(s => s.repo === repo);
+  if (!list.length) {
+    el.innerHTML = `<div class="inv-empty" style="padding: var(--s-5)"><div class="inv-empty__text">Sin proveedores asignados. Asigna uno arriba.</div></div>`;
+    $('#reorder-suggestions').innerHTML = '';
+    return;
+  }
+  el.innerHTML = `
+    <div class="inv-section">
+      <div class="inv-section__header"><h3 class="inv-section__title">🚚 ${list.length} proveedor${list.length > 1 ? 'es' : ''} asignado${list.length > 1 ? 's' : ''}</h3></div>
+      <table class="inv-table">
+        <thead><tr><th>Producto</th><th>Proveedor</th><th>Contacto</th><th>Qty pedido</th><th>Lead</th><th></th></tr></thead>
+        <tbody>
+          ${list.map((s, i) => `
+            <tr>
+              <td>${escapeHtml(s.productId)}<br><small style="color:var(--text-muted)">${escapeHtml(s.productName)}</small></td>
+              <td>${escapeHtml(s.supplier)}</td>
+              <td style="font-family:var(--font-mono);font-size:11px">${escapeHtml(s.contact || '—')}</td>
+              <td class="inv-stock">${s.reorderQty}</td>
+              <td class="inv-stock">${s.leadTime}d</td>
+              <td><button class="inv-section__export" data-del-sup="${i}" style="color:var(--danger);border-color:rgba(239,68,68,0.3)">🗑</button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+  $$('[data-del-sup]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.delSup, 10);
+      const all = loadSuppliers().filter(s => s.repo === repo);
+      const target = all[idx];
+      if (!target) return;
+      const remaining = loadSuppliers().filter(s => !(s.repo === target.repo && s.productId === target.productId && s.created === target.created));
+      saveSuppliers(remaining);
+      renderSuppliersList(repo, report);
+      toast('Proveedor eliminado', '🗑');
+    });
+  });
+
+  // Sugerencias de reabastecimiento automático
+  const agotados = report.agotados || [];
+  const stockBajo = report.stockBajo || [];
+  const urgent = list.filter(s => {
+    const isAgotado = agotados.some(p => String(p.id) === String(s.productId));
+    const isBajo = stockBajo.some(p => String(p.id) === String(s.productId));
+    return isAgotado || isBajo;
+  });
+  if (urgent.length) {
+    $('#reorder-suggestions').innerHTML = `
+      <div class="inv-section inv-section--warning" style="margin-top: var(--s-4)">
+        <div class="inv-section__header">
+          <h3 class="inv-section__title">⚠️ ${urgent.length} pedido${urgent.length > 1 ? 's' : ''} de reabastecimiento sugerido${urgent.length > 1 ? 's' : ''}</h3>
+        </div>
+        <table class="inv-table">
+          <thead><tr><th>Producto</th><th>Proveedor</th><th>Contacto</th><th>Cantidad</th><th>Llega en</th><th></th></tr></thead>
+          <tbody>
+            ${urgent.map(s => {
+              const isAgotado = agotados.some(p => String(p.id) === String(s.productId));
+              return `
+                <tr>
+                  <td>${escapeHtml(s.productId)}<br><small style="color:var(--text-muted)">${escapeHtml(s.productName)}</small></td>
+                  <td>${escapeHtml(s.supplier)}</td>
+                  <td style="font-family:var(--font-mono);font-size:11px">${escapeHtml(s.contact || '—')}</td>
+                  <td class="inv-stock">${s.reorderQty}</td>
+                  <td class="inv-stock inv-stock--${isAgotado ? 'zero' : 'low'}">${s.leadTime}d</td>
+                  <td>
+                    ${s.contact ? `<a class="inv-section__export" href="mailto:${escapeHtml(s.contact)}?subject=Pedido%20${escapeHtml(s.productName)}&body=Hola,%20necesito%20reabastecer%20${s.reorderQty}%20unidades%20de%20${escapeHtml(s.productName)}%20(ID:%20${escapeHtml(s.productId)})." target="_blank" style="color:var(--accent)">📧</a>` : ''}
+                  </td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } else {
+    $('#reorder-suggestions').innerHTML = '';
+  }
+}
+
+// ─── Webhook Shopify/WooCommerce (config + UI) ───
+const WEBHOOKS_KEY = 'agent-brain-inv-webhooks';
+
+function loadWebhooks() {
+  try { return JSON.parse(localStorage.getItem(WEBHOOKS_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveWebhooks(list) {
+  localStorage.setItem(WEBHOOKS_KEY, JSON.stringify(list));
+}
+
+function showShopifyModal(repo) {
+  let modal = $('#shopify-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'shopify-modal';
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__panel">
+        <div class="modal__header">
+          <h2 class="modal__title">🛒 Webhook de tienda (Shopify/WooCommerce)</h2>
+          <button class="icon-btn icon-btn--ghost" data-close>×</button>
+        </div>
+        <div class="modal__body" id="shopify-modal-body"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => {
+      if (e.target.matches('[data-close]') || e.target.closest('[data-close]')) {
+        modal.hidden = true;
+      }
+    });
+  }
+  const body = $('#shopify-modal-body');
+  const existing = loadWebhooks().find(w => w.repo === repo);
+  body.innerHTML = `
+    <p style="color:var(--text-secondary);font-size:13px;margin:0 0 var(--s-3);line-height:1.6">
+      Conecta tu tienda Shopify o WooCommerce. El webhook enviará eventos de inventario (producto agotado, nuevo producto, stock bajo) a este dashboard en tiempo real.
+    </p>
+    <div class="field">
+      <label class="field__label">Tipo de plataforma</label>
+      <select class="field__input" id="wh-platform">
+        <option value="shopify" ${existing?.platform === 'shopify' ? 'selected' : ''}>Shopify</option>
+        <option value="woocommerce" ${existing?.platform === 'woocommerce' ? 'selected' : ''}>WooCommerce</option>
+        <option value="manual" ${existing?.platform === 'manual' || !existing ? 'selected' : ''}>Manual (subir CSV/JSON)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label class="field__label">URL de la tienda</label>
+      <input class="field__input" type="text" id="wh-url" placeholder="https://mitienda.com" value="${escapeHtml(existing?.url || '')}">
+    </div>
+    <div class="field">
+      <label class="field__label">API Key / Token de acceso</label>
+      <input class="field__input" type="password" id="wh-token" placeholder="shpat_xxx... o woo_key" value="${escapeHtml(existing?.token || '')}">
+    </div>
+    <div class="info-banner" style="margin-top: var(--s-3)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <span>Para Shopify: usa un <strong>Admin API access token</strong> (permisos <code>read_products, read_inventory</code>).<br>Para WooCommerce: usa <strong>Consumer Key + Secret</strong> en formato <code>key:secret</code>.</span>
+    </div>
+    <div style="margin-top: var(--s-4); display:flex; gap: var(--s-2); flex-wrap: wrap">
+      <button class="btn btn--primary" id="wh-save-btn">💾 Guardar configuración</button>
+      <button class="btn btn--analyze" id="wh-test-btn">🔍 Test conexión</button>
+      <button class="btn btn--ghost" id="wh-sync-btn">🔄 Sync ahora</button>
+    </div>
+    <div id="wh-result" style="margin-top: var(--s-3)"></div>
+  `;
+  $('#wh-save-btn').addEventListener('click', () => {
+    const webhooks = loadWebhooks().filter(w => w.repo !== repo);
+    webhooks.push({
+      repo,
+      platform: $('#wh-platform').value,
+      url: $('#wh-url').value.trim(),
+      token: $('#wh-token').value.trim(),
+      created: existing?.created || Date.now(),
+      updated: Date.now(),
+    });
+    saveWebhooks(webhooks);
+    toast('Configuración guardada', '💾');
+  });
+  $('#wh-test-btn').addEventListener('click', async () => {
+    const platform = $('#wh-platform').value;
+    const url = $('#wh-url').value.trim();
+    const token = $('#wh-token').value.trim();
+    const resultEl = $('#wh-result');
+    if (!url || !token) {
+      resultEl.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">⚠️ Falta URL o token</div>';
+      return;
+    }
+    resultEl.innerHTML = '<div class="inv-loading"><div class="inv-loading__spinner"></div><div>Probando conexión…</div></div>';
+    try {
+      let endpoint, headers;
+      if (platform === 'shopify') {
+        endpoint = `${url.replace(/\/$/, '')}/admin/api/2024-01/products.json?limit=1`;
+        headers = { 'X-Shopify-Access-Token': token };
+      } else if (platform === 'woocommerce') {
+        const [key, secret] = token.split(':');
+        endpoint = `${url.replace(/\/$/, '')}/wp-json/wc/v3/products?per_page=1`;
+        headers = { 'Authorization': `Basic ${btoa(`${key}:${secret}`)}` };
+      } else {
+        throw new Error('Manual no requiere test');
+      }
+      const res = await fetch(endpoint, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const count = data.products?.length || 0;
+        resultEl.innerHTML = `<div class="info-banner" style="background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.3)">✅ Conexión exitosa. ${count} producto(s) detectado(s).</div>`;
+      } else {
+        resultEl.innerHTML = `<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">❌ Error ${res.status}: ${res.statusText}</div>`;
+      }
+    } catch (err) {
+      resultEl.innerHTML = `<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">❌ ${escapeHtml(err.message)}.<br>Si es CORS, configura tu servidor para permitir el origen del dashboard.</div>`;
+    }
+  });
+  $('#wh-sync-btn').addEventListener('click', async () => {
+    const platform = $('#wh-platform').value;
+    const url = $('#wh-url').value.trim();
+    const token = $('#wh-token').value.trim();
+    if (!url || !token) {
+      toast('Falta URL o token', '⚠️');
+      return;
+    }
+    const resultEl = $('#wh-result');
+    resultEl.innerHTML = '<div class="inv-loading"><div class="inv-loading__spinner"></div><div>Sincronizando productos…</div></div>';
+    try {
+      let endpoint, headers;
+      if (platform === 'shopify') {
+        endpoint = `${url.replace(/\/$/, '')}/admin/api/2024-01/products.json?limit=250`;
+        headers = { 'X-Shopify-Access-Token': token };
+      } else {
+        const [key, secret] = token.split(':');
+        endpoint = `${url.replace(/\/$/, '')}/wp-json/wc/v3/products?per_page=100`;
+        headers = { 'Authorization': `Basic ${btoa(`${key}:${secret}`)}` };
+      }
+      const res = await fetch(endpoint, { headers });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const products = (data.products || []).map(p => ({
+        id: String(p.id),
+        name: p.title || p.name,
+        stock: platform === 'shopify'
+          ? p.variants?.reduce((s, v) => s + (v.inventory_quantity || 0), 0)
+          : p.stock_quantity || 0,
+        price: platform === 'shopify' ? parseFloat(p.variants?.[0]?.price || 0) : parseFloat(p.price || 0),
+      }));
+      if (!products.length) throw new Error('No se encontraron productos');
+      const report = {
+        repo: `${repo} (sync ${platform})`,
+        file: `${platform} API`,
+        fields: { id: 'id', stock: 'stock', name: 'name', price: 'price' },
+        agotados: products.filter(p => p.stock === 0),
+        stockBajo: products.filter(p => p.stock > 0 && p.stock < 5),
+        disponibles: products.filter(p => p.stock > 0),
+        totalValue: products.reduce((s, p) => s + (p.price || 0) * (p.stock || 0), 0),
+        summary: {
+          total: products.length,
+          agotados: products.filter(p => p.stock === 0).length,
+          stockBajo: products.filter(p => p.stock > 0 && p.stock < 5).length,
+          disponibles: products.filter(p => p.stock > 0).length,
+        },
+      };
+      renderSingleRepoReport(report);
+      modal.hidden = true;
+      toast(`Sync exitoso: ${products.length} productos`, '🔄');
+    } catch (err) {
+      resultEl.innerHTML = `<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">❌ ${escapeHtml(err.message)}</div>`;
+    }
+  });
+  modal.hidden = false;
+}
+
+// ─── Multi-repo support ───
+function showMultiRepoModal() {
+  let modal = $('#multirepo-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = 'multirepo-modal';
+    modal.innerHTML = `
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__panel">
+        <div class="modal__header">
+          <h2 class="modal__title">📚 Multi-repo</h2>
+          <button class="icon-btn icon-btn--ghost" data-close>×</button>
+        </div>
+        <div class="modal__body" id="multirepo-modal-body"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => {
+      if (e.target.matches('[data-close]') || e.target.closest('[data-close]')) {
+        modal.hidden = true;
+      }
+    });
+  }
+  const repos = state.multiRepos || [];
+  const body = $('#multirepo-modal-body');
+  body.innerHTML = `
+    <p style="color:var(--text-secondary);font-size:13px;margin:0 0 var(--s-3);line-height:1.6">
+      Gestiona varios repos a la vez. Cada uno se analiza por separado, pero puedes compararlos entre sí.
+    </p>
+    <div class="field">
+      <label class="field__label">Añadir repo (owner/name)</label>
+      <input class="field__input" type="text" id="mr-add-input" placeholder="axontech/axon-store">
+    </div>
+    <button class="btn btn--primary" id="mr-add-btn">+ Añadir</button>
+    <div id="mr-list" style="margin-top: var(--s-3)"></div>
+  `;
+  const renderList = () => {
+    const list = $('#mr-list');
+    if (!repos.length) {
+      list.innerHTML = '<div class="inv-empty" style="padding:var(--s-4)"><div class="inv-empty__text">Sin repos. Añade uno arriba.</div></div>';
+      return;
+    }
+    list.innerHTML = `
+      <table class="inv-table">
+        <thead><tr><th>Repo</th><th></th></tr></thead>
+        <tbody>
+          ${repos.map((r, i) => `<tr><td>${escapeHtml(r)}</td><td><button class="inv-section__export" data-mr-del="${i}" style="color:var(--danger)">🗑</button></td></tr>`).join('')}
+        </tbody>
+      </table>
+    `;
+    $$('[data-mr-del]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.mrDel, 10);
+        repos.splice(idx, 1);
+        state.multiRepos = repos;
+        localStorage.setItem('agent-brain-multirepos', JSON.stringify(repos));
+        renderList();
+      });
+    });
+  };
+  renderList();
+  $('#mr-add-btn').addEventListener('click', () => {
+    const v = $('#mr-add-input').value.trim();
+    if (!v) return;
+    if (!repos.includes(v)) {
+      repos.push(v);
+      state.multiRepos = repos;
+      localStorage.setItem('agent-brain-multirepos', JSON.stringify(repos));
+      $('#mr-add-input').value = '';
+      renderList();
+      toast('Repo añadido', '📚');
+    }
+  });
+  modal.hidden = false;
+}
+
+// ─── Búsqueda full-text en toda la memoria ───
+function fullTextMemorySearch(query) {
+  const idx = state.data?.index || {};
+  const q = query.toLowerCase().trim();
+  if (!q) return [];
+  const results = [];
+  for (const [id, m] of Object.entries(idx)) {
+    const title = (m.title || '').toLowerCase();
+    const tags = (m.tags || []).join(' ').toLowerCase();
+    const project = (m.project || '').toLowerCase();
+    if (title.includes(q) || id.toLowerCase().includes(q) || tags.includes(q) || project.includes(q)) {
+      results.push({ id, ...m, score: title.includes(q) ? 3 : tags.includes(q) ? 2 : 1 });
+    }
+  }
+  return results.sort((a, b) => b.score - a.score).slice(0, 20);
+}
+
+// ─── Modo compacto ───
+function toggleCompactMode() {
+  document.body.classList.toggle('compact-mode');
+  const isCompact = document.body.classList.contains('compact-mode');
+  localStorage.setItem('agent-brain-compact', isCompact ? '1' : '0');
+  toast(isCompact ? 'Modo compacto activado' : 'Modo normal', '⚙️');
+}
+
+// ─── Exportar memoria a JSON ───
+function exportMemoryJSON() {
+  const data = {
+    exportedAt: new Date().toISOString(),
+    index: state.data?.index || {},
+    stats: state.data?.stats || {},
+    tasks: state.data?.tasks || [],
+    diary: state.data?.diary || null,
+    budget: state.data?.budget || null,
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `agent-brain-memory-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Memoria exportada', '📤');
+}
+
+// ─── Histórico de inventario (localStorage) ───
+const HISTORY_KEY = 'agent-brain-inv-history';
+const MAX_HISTORY = 90;
+
+function loadInventoryHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveInventoryHistoryEntry(report) {
+  const history = loadInventoryHistory();
+  const entry = {
+    ts: Date.now(),
+    date: new Date().toISOString().slice(0, 10),
+    repo: report.repo,
+    total: report.summary.total,
+    agotados: report.summary.agotados,
+    stockBajo: report.summary.stockBajo,
+    disponibles: report.summary.disponibles,
+    totalValue: report.totalValue || 0,
+  };
+  history.push(entry);
+  if (history.length > MAX_HISTORY) history.splice(0, history.length - MAX_HISTORY);
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); }
+  catch (err) { console.warn('[history] no se pudo guardar:', err.message); }
+}
+
+function getRepoHistory(repo) {
+  return loadInventoryHistory().filter(e => e.repo === repo);
+}
+
+function showHistoryModal(repo) {
+  const history = getRepoHistory(repo);
+  let modal = $('#history-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'history-modal';
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__panel">
+        <div class="modal__header">
+          <h2 class="modal__title">📈 Histórico de ${escapeHtml(repo)}</h2>
+          <button class="icon-btn icon-btn--ghost" data-close>×</button>
+        </div>
+        <div class="modal__body" id="history-modal-body"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => {
+      if (e.target.matches('[data-close]') || e.target.closest('[data-close]')) {
+        modal.hidden = true;
+      }
+    });
+  }
+  const body = $('#history-modal-body');
+  if (history.length < 2) {
+    body.innerHTML = `
+      <div class="inv-empty">
+        <div class="inv-empty__icon">📈</div>
+        <div class="inv-empty__text">
+          Necesitas al menos 2 análisis para ver histórico.<br>
+          Ahora tienes ${history.length}. Cada análisis se guarda automáticamente.
+        </div>
+      </div>`;
+    modal.hidden = false;
+    return;
+  }
+  body.innerHTML = `
+    <canvas id="history-chart" width="500" height="220"></canvas>
+    <div class="inv-section" style="margin-top: var(--s-4)">
+      <div class="inv-section__header"><h3 class="inv-section__title">📊 Últimos ${history.length} análisis</h3></div>
+      <table class="inv-table">
+        <thead><tr><th>Fecha</th><th>Total</th><th>Agotados</th><th>Stock bajo</th><th>Disponibles</th><th>Valor</th></tr></thead>
+        <tbody>
+          ${history.slice().reverse().slice(0, 20).map(h => `
+            <tr>
+              <td>${h.date}</td>
+              <td class="inv-stock">${h.total}</td>
+              <td class="inv-stock inv-stock--${h.agotados > 0 ? 'zero' : 'ok'}">${h.agotados}</td>
+              <td class="inv-stock inv-stock--${h.stockBajo > 0 ? 'low' : 'ok'}">${h.stockBajo}</td>
+              <td class="inv-stock inv-stock--ok">${h.disponibles}</td>
+              <td class="inv-price">${h.totalValue > 0 ? '$' + h.totalValue.toFixed(0) : '—'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+  modal.hidden = false;
+  drawHistoryChart(history);
+}
+
+function drawHistoryChart(history) {
+  const canvas = $('#history-chart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const data = history.slice(-30);
+  if (data.length < 2) return;
+  const series = [
+    { key: 'agotados', color: '#ef4444', label: 'Agotados' },
+    { key: 'stockBajo', color: '#f59e0b', label: 'Stock bajo' },
+    { key: 'disponibles', color: '#10b981', label: 'Disponibles' },
+  ];
+  const maxVal = Math.max(...data.flatMap(d => [d.agotados, d.stockBajo, d.disponibles]), 1);
+  const padL = 40, padR = 20, padT = 20, padB = 40;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  ctx.strokeStyle = 'rgba(125,133,144,0.1)';
+  ctx.lineWidth = 1;
+  ctx.fillStyle = '#7d8590';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const y = padT + (plotH * i) / 4;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(W - padR, y);
+    ctx.stroke();
+    ctx.fillText(String(Math.round(maxVal * (1 - i / 4))), padL - 4, y + 3);
+  }
+  const step = plotW / Math.max(data.length - 1, 1);
+  for (const s of series) {
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    data.forEach((d, i) => {
+      const x = padL + i * step;
+      const y = padT + plotH - (d[s.key] / maxVal) * plotH;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.fillStyle = s.color;
+    data.forEach((d, i) => {
+      const x = padL + i * step;
+      const y = padT + plotH - (d[s.key] / maxVal) * plotH;
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+  ctx.fillStyle = '#7d8590';
+  ctx.textAlign = 'center';
+  const xStep = Math.ceil(data.length / 6);
+  data.forEach((d, i) => {
+    if (i % xStep === 0 || i === data.length - 1) {
+      ctx.fillText(d.date.slice(5), padL + i * step, H - padB + 14);
+    }
+  });
+  ctx.textAlign = 'left';
+  let lx = padL;
+  for (const s of series) {
+    ctx.fillStyle = s.color;
+    ctx.fillRect(lx, 4, 10, 10);
+    ctx.fillStyle = '#7d8590';
+    ctx.fillText(s.label, lx + 14, 12);
+    lx += 90;
+  }
+}
+
+// ─── Alertas custom (umbrales por producto) ───
+const ALERTS_KEY = 'agent-brain-inv-alerts';
+
+function loadCustomAlerts() {
+  try { return JSON.parse(localStorage.getItem(ALERTS_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveCustomAlerts(alerts) {
+  localStorage.setItem(ALERTS_KEY, JSON.stringify(alerts));
+}
+
+function showAlertsModal(report) {
+  let modal = $('#alerts-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'alerts-modal';
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__panel">
+        <div class="modal__header">
+          <h2 class="modal__title">⚙️ Alertas personalizadas</h2>
+          <button class="icon-btn icon-btn--ghost" data-close>×</button>
+        </div>
+        <div class="modal__body" id="alerts-modal-body"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => {
+      if (e.target.matches('[data-close]') || e.target.closest('[data-close]')) {
+        modal.hidden = true;
+      }
+    });
+  }
+  const body = $('#alerts-modal-body');
+  const allProducts = [
+    ...report.disponibles.map(p => ({ ...p, status: 'disponible' })),
+    ...report.stockBajo.map(p => ({ ...p, status: 'stock bajo' })),
+    ...report.agotados.map(p => ({ ...p, status: 'agotado' })),
+  ];
+  body.innerHTML = `
+    <p style="color:var(--text-secondary);font-size:13px;margin:0 0 var(--s-3);line-height:1.6">
+      Define umbrales de stock por producto. Cuando un análisis detecta que el stock baja del umbral, recibes notificación push.
+    </p>
+    <div class="field">
+      <label class="field__label">Producto</label>
+      <select class="field__input" id="alert-product">
+        ${allProducts.map(p => `<option value="${escapeHtml(p.id)}|${escapeHtml(p.name)}">${escapeHtml(p.id)} — ${escapeHtml(p.name)} (stock actual: ${p.stock})</option>`).join('')}
+      </select>
+    </div>
+    <div class="field">
+      <label class="field__label">Umbral (notificar cuando stock &lt;=)</label>
+      <input class="field__input" type="number" id="alert-threshold" value="5" min="0">
+    </div>
+    <button class="btn btn--primary" id="add-alert-btn" style="margin-bottom: var(--s-4)">
+      <span>+ Añadir alerta</span>
+    </button>
+    <div id="alerts-list"></div>
+  `;
+  renderAlertsList(report.repo);
+  $('#add-alert-btn').addEventListener('click', () => {
+    const sel = $('#alert-product').value.split('|');
+    const productId = sel[0];
+    const productName = sel[1] || productId;
+    const threshold = parseInt($('#alert-threshold').value, 10);
+    if (!productId || isNaN(threshold)) return;
+    const alerts = loadCustomAlerts();
+    if (alerts.some(a => a.repo === report.repo && a.productId === productId)) {
+      toast('Ya tienes una alerta para ese producto', '⚠️');
+      return;
+    }
+    alerts.push({ repo: report.repo, productId, productName, threshold, created: Date.now() });
+    saveCustomAlerts(alerts);
+    renderAlertsList(report.repo);
+    toast('Alerta añadida', '🔔');
+  });
+  modal.hidden = false;
+}
+
+function renderAlertsList(repo) {
+  const el = $('#alerts-list');
+  if (!el) return;
+  const alerts = loadCustomAlerts().filter(a => a.repo === repo);
+  if (!alerts.length) {
+    el.innerHTML = `<div class="inv-empty" style="padding: var(--s-5)"><div class="inv-empty__text">Sin alertas. Añade una arriba.</div></div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="inv-section__header" style="background:transparent;border:none;padding:0 0 var(--s-2)">
+      <h3 class="inv-section__title">🔔 ${alerts.length} alerta${alerts.length > 1 ? 's' : ''} activa${alerts.length > 1 ? 's' : ''}</h3>
+    </div>
+    <table class="inv-table">
+      <thead><tr><th>Producto</th><th>Umbral</th><th></th></tr></thead>
+      <tbody>
+        ${alerts.map((a, i) => `
+          <tr>
+            <td>${escapeHtml(a.productId)} — ${escapeHtml(a.productName)}</td>
+            <td class="inv-stock inv-stock--low">${a.threshold}</td>
+            <td><button class="inv-section__export" data-del-alert="${i}" style="color:var(--danger);border-color:rgba(239,68,68,0.3)">🗑</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+  $$('[data-del-alert]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.delAlert, 10);
+      const all = loadCustomAlerts().filter(a => a.repo === repo);
+      const target = all[idx];
+      if (!target) return;
+      const remaining = loadCustomAlerts().filter(a => !(a.repo === target.repo && a.productId === target.productId));
+      saveCustomAlerts(remaining);
+      renderAlertsList(repo);
+      toast('Alerta eliminada', '🗑');
+    });
+  });
+}
+
+function checkCustomAlerts(report) {
+  const alerts = loadCustomAlerts().filter(a => a.repo === report.repo);
+  if (!alerts.length) return;
+  const allProducts = [...report.disponibles, ...report.stockBajo, ...report.agotados];
+  for (const alert of alerts) {
+    const product = allProducts.find(p => String(p.id) === String(alert.productId));
+    if (!product) continue;
+    if (product.stock <= alert.threshold) {
+      showNotification(
+        `🔔 ${alert.productName} cruzó tu umbral`,
+        `Stock actual: ${product.stock} (umbral: ${alert.threshold})`,
+        { icon: '🔔', tag: `alert-${alert.productId}`, renotify: true }
+      );
+    }
+  }
+}
+
+// ─── Multi-moneda ───
+const STATIC_RATES = {
+  USD: { USD: 1, EUR: 0.92, MXN: 17.5, CUP: 240, ARS: 850, COP: 4100, CLP: 950, PEN: 3.8 },
+  EUR: { USD: 1.09, EUR: 1, MXN: 19, CUP: 260, ARS: 920, COP: 4450, CLP: 1030, PEN: 4.1 },
+  MXN: { USD: 0.057, EUR: 0.053, MXN: 1, CUP: 13.7, ARS: 48.5, COP: 234, CLP: 54, PEN: 0.22 },
+  CUP: { USD: 0.0042, EUR: 0.0038, MXN: 0.073, CUP: 1, ARS: 3.5, COP: 17, CLP: 4, PEN: 0.016 },
+};
+
+function detectCurrency(report) {
+  if (/\.cu$|cuban/i.test(report.repo)) return 'CUP';
+  if (/\.mx$|mexic/i.test(report.repo)) return 'MXN';
+  if (/\.ar$|argent/i.test(report.repo)) return 'ARS';
+  return 'USD';
+}
+
+function convertPrice(price, fromCurrency, toCurrency) {
+  if (!price || fromCurrency === toCurrency) return price;
+  const rates = STATIC_RATES[fromCurrency] || STATIC_RATES.USD;
+  const rate = rates[toCurrency] || 1;
+  return price * rate;
+}
+
+function formatPriceCurrency(price, currency) {
+  if (price == null) return '';
+  const symbols = { USD: '$', EUR: '€', MXN: '$', CUP: '$', ARS: '$', COP: '$', CLP: '$', PEN: 'S/' };
+  const symbol = symbols[currency] || '$';
+  const formatted = price < 100 ? price.toFixed(2) : price < 10000 ? price.toFixed(0) : (price / 1000).toFixed(1) + 'k';
+  return `${symbol}${formatted}`;
+}
+
+// ─── Mapa de calor ───
+function loadInventorySnapshots(repo) {
+  try { return JSON.parse(localStorage.getItem(`inv-snapshots-${repo}`) || '[]'); }
+  catch { return []; }
+}
+
+function saveInventorySnapshot(report) {
+  if (!report?.repo) return;
+  const key = `inv-snapshots-${report.repo}`;
+  let snapshots = [];
+  try { snapshots = JSON.parse(localStorage.getItem(key) || '[]'); } catch {}
+  snapshots.push({
+    ts: Date.now(),
+    date: new Date().toISOString().slice(0, 10),
+    agotados: report.agotados || [],
+    stockBajo: report.stockBajo || [],
+    disponibles: (report.disponibles || []).slice(0, 50),
+    summary: report.summary,
+  });
+  if (snapshots.length > 60) snapshots.splice(0, snapshots.length - 60);
+  try { localStorage.setItem(key, JSON.stringify(snapshots)); }
+  catch (err) { console.warn('[snapshot] no se pudo guardar:', err.message); }
+}
+
+function showHeatmapModal(repo) {
+  const snapshots = loadInventorySnapshots(repo);
+  let modal = $('#heatmap-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'heatmap-modal';
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__panel">
+        <div class="modal__header">
+          <h2 class="modal__title">🔥 Mapa de calor — productos más agotados</h2>
+          <button class="icon-btn icon-btn--ghost" data-close>×</button>
+        </div>
+        <div class="modal__body" id="heatmap-modal-body"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => {
+      if (e.target.matches('[data-close]') || e.target.closest('[data-close]')) {
+        modal.hidden = true;
+      }
+    });
+  }
+  const body = $('#heatmap-modal-body');
+  if (snapshots.length < 2) {
+    body.innerHTML = `
+      <div class="inv-empty">
+        <div class="inv-empty__icon">📊</div>
+        <div class="inv-empty__text">
+          Necesitas al menos 2 análisis para ver el mapa de calor.<br>
+          Ahora tienes ${snapshots.length}.<br>
+          Cada análisis guarda un snapshot automáticamente.
+        </div>
+      </div>`;
+    modal.hidden = false;
+    return;
+  }
+  const agotadoCount = new Map();
+  for (const snap of snapshots) {
+    for (const p of snap.agotados || []) {
+      const key = String(p.id);
+      agotadoCount.set(key, (agotadoCount.get(key) || 0) + 1);
+    }
+  }
+  const lastSnap = snapshots[snapshots.length - 1];
+  const sorted = Array.from(agotadoCount.entries())
+    .map(([id, count]) => ({
+      id,
+      name: lastSnap.agotados?.find(p => String(p.id) === id)?.name || id,
+      timesAgotado: count,
+      pct: Math.round((count / snapshots.length) * 100),
+    }))
+    .sort((a, b) => b.timesAgotado - a.timesAgotado)
+    .slice(0, 30);
+
+  if (!sorted.length) {
+    body.innerHTML = `<div class="inv-empty"><div class="inv-empty__icon">🎉</div><div class="inv-empty__text">¡Ningún producto se ha agotado en los ${snapshots.length} análisis!</div></div>`;
+  } else {
+    body.innerHTML = `
+      <p style="color:var(--text-secondary);font-size:13px;margin:0 0 var(--s-3);line-height:1.6">
+        Productos que se agotaron en más análisis (de ${snapshots.length} totales en ${escapeHtml(repo)}).
+        Rojo más intenso = más veces agotado.
+      </p>
+      <div class="heatmap-grid">
+        ${sorted.map(p => {
+          const intensity = Math.min(1, p.pct / 100);
+          const r = 239, g = Math.round(68 + (1 - intensity) * 150), b = Math.round(73 + (1 - intensity) * 100);
+          const bg = `rgba(${r}, ${g}, ${b}, ${0.2 + intensity * 0.8})`;
+          return `
+            <div class="heatmap-cell" style="background: ${bg}; border-color: rgba(${r},${g},${b},0.4)">
+              <div class="heatmap-cell__count">${p.timesAgotado}x</div>
+              <div class="heatmap-cell__name">${escapeHtml(p.name)}</div>
+              <div class="heatmap-cell__id">${escapeHtml(p.id)}</div>
+              <div class="heatmap-cell__pct">${p.pct}% de los análisis</div>
+            </div>`;
+        }).join('')}
+      </div>
+    `;
+  }
+  modal.hidden = false;
+}
+
+// ─── Predicción de demanda (regresión lineal simple) ───
+function linearRegression(points) {
+  // points: [{ x, y }] — devuelve { slope, intercept, r2 }
+  const n = points.length;
+  if (n < 2) return { slope: 0, intercept: 0, r2: 0 };
+  const sumX = points.reduce((s, p) => s + p.x, 0);
+  const sumY = points.reduce((s, p) => s + p.y, 0);
+  const meanX = sumX / n;
+  const meanY = sumY / n;
+  let num = 0, denX = 0, denY = 0;
+  for (const p of points) {
+    num += (p.x - meanX) * (p.y - meanY);
+    denX += (p.x - meanX) ** 2;
+    denY += (p.y - meanY) ** 2;
+  }
+  const slope = denX === 0 ? 0 : num / denX;
+  const intercept = meanY - slope * meanX;
+  const r2 = (denX === 0 || denY === 0) ? 0 : (num * num) / (denX * denY);
+  return { slope, intercept, r2 };
+}
+
+function showPredictionModal(repo) {
+  const snapshots = loadInventorySnapshots(repo);
+  let modal = $('#prediction-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'prediction-modal';
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal__backdrop" data-close></div>
+      <div class="modal__panel">
+        <div class="modal__header">
+          <h2 class="modal__title">🔮 Predicción de demanda</h2>
+          <button class="icon-btn icon-btn--ghost" data-close>×</button>
+        </div>
+        <div class="modal__body" id="prediction-modal-body"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => {
+      if (e.target.matches('[data-close]') || e.target.closest('[data-close]')) {
+        modal.hidden = true;
+      }
+    });
+  }
+  const body = $('#prediction-modal-body');
+  if (snapshots.length < 3) {
+    body.innerHTML = `
+      <div class="inv-empty">
+        <div class="inv-empty__icon">🔮</div>
+        <div class="inv-empty__text">
+          Necesitas al menos 3 análisis para predecir demanda.<br>
+          Ahora tienes ${snapshots.length}.<br>
+          La predicción mejora con más datos históricos.
+        </div>
+      </div>`;
+    modal.hidden = false;
+    return;
+  }
+  // Para cada producto del último snapshot, mirar su stock en snapshots anteriores
+  const lastSnap = snapshots[snapshots.length - 1];
+  const allProducts = [
+    ...(lastSnap.disponibles || []),
+    ...(lastSnap.stockBajo || []),
+    ...(lastSnap.agotados || []),
+  ];
+  // Map id → [{ x: ts, y: stock }] buscando en cada snapshot
+  const series = new Map();
+  for (const snap of snapshots) {
+    const items = [...(snap.disponibles || []), ...(snap.stockBajo || []), ...(snap.agotados || [])];
+    for (const p of items) {
+      const key = String(p.id);
+      if (!series.has(key)) series.set(key, []);
+      const stock = typeof p.stock === 'number' ? p.stock : null;
+      if (stock != null) {
+        series.get(key).push({ x: snap.ts, y: stock, date: snap.date });
+      }
+    }
+  }
+  // Calcular predicción: cuántos días hasta stock=0
+  const predictions = [];
+  const now = Date.now();
+  const DAY_MS = 86400000;
+  for (const [id, points] of series) {
+    if (points.length < 2) continue;
+    const lastPoint = points[points.length - 1];
+    if (lastPoint.y === 0) continue; // ya agotado
+    // Normalizar x a días desde primer punto
+    const x0 = points[0].x;
+    const normPoints = points.map(p => ({ x: (p.x - x0) / DAY_MS, y: p.y }));
+    const { slope, intercept, r2 } = linearRegression(normPoints);
+    if (slope >= 0) continue; // no está bajando
+    // stock = intercept + slope * x => x_when_zero = -intercept / slope
+    const xWhenZero = -intercept / slope; // en días desde x0
+    const daysFromNow = xWhenZero - (now - x0) / DAY_MS;
+    if (daysFromNow <= 0 || daysFromNow > 365) continue;
+    const product = allProducts.find(p => String(p.id) === id);
+    predictions.push({
+      id,
+      name: product?.name || id,
+      currentStock: lastPoint.y,
+      slope: slope.toFixed(2), // unidades/día
+      daysUntilEmpty: Math.round(daysFromNow),
+      confidence: r2,
+      estimatedDate: new Date(now + daysFromNow * DAY_MS).toISOString().slice(0, 10),
+    });
+  }
+  predictions.sort((a, b) => a.daysUntilEmpty - b.daysUntilEmpty);
+  if (!predictions.length) {
+    body.innerHTML = `<div class="inv-empty"><div class="inv-empty__icon">📈</div><div class="inv-empty__text">Sin productos con tendencia a agotarse en los próximos 365 días.</div></div>`;
+  } else {
+    body.innerHTML = `
+      <p style="color:var(--text-secondary);font-size:13px;margin:0 0 var(--s-3);line-height:1.6">
+        Productos que se agotarán pronto según tendencia de stock (basado en ${snapshots.length} análisis).
+        Confianza = R² del ajuste lineal (más cerca de 1 = más confiable).
+      </p>
+      <div class="inv-section">
+        <table class="inv-table">
+          <thead><tr><th>Producto</th><th>Stock actual</th><th>Tendencia</th><th>Días hasta agotar</th><th>Fecha estimada</th><th>Confianza</th></tr></thead>
+          <tbody>
+            ${predictions.slice(0, 30).map(p => {
+              const urgency = p.daysUntilEmpty < 7 ? 'zero' : p.daysUntilEmpty < 30 ? 'low' : 'ok';
+              const conf = p.confidence > 0.7 ? 'ok' : p.confidence > 0.4 ? 'low' : 'zero';
+              return `
+                <tr>
+                  <td>${escapeHtml(p.id)}<br><small style="color:var(--text-muted)">${escapeHtml(p.name)}</small></td>
+                  <td class="inv-stock inv-stock--ok">${p.currentStock}</td>
+                  <td class="inv-diff inv-diff--down">${p.slope}/día</td>
+                  <td class="inv-stock inv-stock--${urgency}">${p.daysUntilEmpty}d</td>
+                  <td style="font-family:var(--font-mono);font-size:11px">${p.estimatedDate}</td>
+                  <td class="inv-stock inv-stock--${conf}">${(p.confidence * 100).toFixed(0)}%</td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+  modal.hidden = false;
+}
+
+function exportInventoryCSV(report, onlySection = null) {
+  const sections = onlySection
+    ? [{ name: onlySection, items: report[onlySection] || [] }]
+    : [
+        { name: 'agotados', items: report.agotados || [] },
+        { name: 'stockBajo', items: report.stockBajo || [] },
+        { name: 'disponibles', items: report.disponibles || [] },
+      ];
+
+  const hasPrice = !!report.fields?.price;
+  const headers = ['categoria', 'id', 'nombre', 'stock'];
+  if (hasPrice) headers.push('precio');
+
+  const rows = [headers.join(',')];
+  for (const sec of sections) {
+    for (const p of sec.items) {
+      const row = [
+        sec.name,
+        `"${String(p.id || '').replace(/"/g, '""')}"`,
+        `"${String(p.name || '').replace(/"/g, '""')}"`,
+        p.stock ?? '',
+      ];
+      if (hasPrice) row.push(p.price ?? '');
+      rows.push(row.join(','));
+    }
+  }
+
+  const csv = '\uFEFF' + rows.join('\n'); // BOM para Excel
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const date = new Date().toISOString().slice(0, 10);
+  a.download = `inventario-${report.repo.replace('/', '-')}-${date}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  toast('CSV exportado', '📊');
+}
+
+// ─── PWA Notifications ───
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) {
+    console.log('[notif] navegador no soporta notificaciones');
+    return false;
+  }
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') return false;
+  const result = await Notification.requestPermission();
+  return result === 'granted';
+}
+
+async function showNotification(title, body, opts = {}) {
+  const granted = await requestNotificationPermission();
+  if (!granted) {
+    // Fallback: toast in-app
+    toast(`${title}: ${body}`, opts.icon || '🔔');
+    return;
+  }
+  try {
+    const notif = new Notification(title, {
+      body,
+      icon: './icon-192.png',
+      badge: './icon-192.png',
+      tag: opts.tag || 'agent-brain',
+      renotify: opts.renotify || false,
+      data: opts.data || {},
+    });
+    notif.onclick = () => {
+      window.focus();
+      notif.close();
+      if (opts.onClick) opts.onClick();
+    };
+  } catch (err) {
+    console.warn('[notif] error mostrando notificación:', err.message);
+    toast(`${title}: ${body}`, opts.icon || '🔔');
+  }
+}
+
+// Notificar cuando un análisis de inventario detecta productos agotados
+async function notifyInventoryAlerts(report) {
+  if (!report) return;
+  const agotados = report.agotados?.length || 0;
+  const nuevos = report.nuevos?.length || 0;
+  const stockBajo = report.stockBajo?.length || 0;
+
+  if (agotados > 0) {
+    await showNotification(
+      `🔴 ${agotados} producto${agotados > 1 ? 's' : ''} agotado${agotados > 1 ? 's' : ''}`,
+      `En ${report.repo || 'tu repo'}: ${report.agotados.slice(0, 3).map(p => p.name).join(', ')}${agotados > 3 ? '...' : ''}`,
+      { icon: '🔴', tag: 'inv-agotados', renotify: true }
+    );
+  }
+  if (nuevos > 0) {
+    await showNotification(
+      `✨ ${nuevos} producto${nuevos > 1 ? 's' : ''} nuevo${nuevos > 1 ? 's' : ''}`,
+      `Detectado${nuevos > 1 ? 's' : ''} en ${report.labelB || report.repo || 'tu repo'}`,
+      { icon: '✨', tag: 'inv-nuevos', renotify: true }
+    );
+  }
+  if (stockBajo > 0 && agotados === 0) {
+    await showNotification(
+      `⚠️ ${stockBajo} producto${stockBajo > 1 ? 's' : ''} con stock bajo`,
+      `En ${report.repo || 'tu repo'}: stock < 5 unidades`,
+      { icon: '⚠️', tag: 'inv-stockbajo' }
+    );
+  }
+}
+
+// Hook: llamar notifyInventoryAlerts después de cada análisis
+const _originalRenderSingle = renderSingleRepoReport;
+renderSingleRepoReport = function(report) {
+  _originalRenderSingle.call(this, report);
+  notifyInventoryAlerts(report);
+};
+const _originalRenderCompare = renderInventoryReport;
+renderInventoryReport = function(report) {
+  _originalRenderCompare.call(this, report);
+  notifyInventoryAlerts(report);
+};
 
 init().catch(err => {
   console.error('init failed:', err);
