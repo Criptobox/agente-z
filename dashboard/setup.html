@@ -447,20 +447,26 @@ $('#enable-pages').addEventListener('click', async () => {
   btn.disabled = true;
   btn.querySelector('span').textContent = 'Habilitando…';
 
-  // Intentar crear; si ya existe, actualizar
+  const branch = state.repoInfo?.default_branch || 'main';
+  // La API de GitHub Pages requiere branch + path incluso con build_type: workflow
+  const pagesSource = { build_type: 'workflow', branch, path: '/' };
+
+  // Intentar crear; si ya existe (409/422), actualizar
   let res = await apiCall('POST', `/repos/${state.repo}/pages`, {
-    source: { build_type: 'workflow' }
+    source: pagesSource
   });
 
   if (res.status === 409 || res.status === 422) {
     // Ya existe — actualizar
     res = await apiCall('PUT', `/repos/${state.repo}/pages`, {
-      source: { build_type: 'workflow' }
+      source: pagesSource
     });
   }
 
   if (!res.ok) {
-    showError(`Error habilitando Pages: ${res.data?.message || res.status}`);
+    let msg = `Error ${res.status} habilitando Pages`;
+    if (res.data?.message) msg += `: ${res.data.message}`;
+    showError(msg);
     btn.disabled = false;
     btn.querySelector('span').textContent = 'Habilitar Pages';
     return;
