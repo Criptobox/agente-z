@@ -518,6 +518,20 @@ kbd {
 }
 .btn--primary:active { transform: translateY(0); }
 
+/* Analyze button — distinct from primary */
+.btn--analyze {
+  background: var(--bg-elev-2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  height: 32px;
+  padding: 0 12px;
+}
+.btn--analyze:hover {
+  background: var(--bg-elev-3);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* Theme toggle */
 .theme-icon { transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease); }
 [data-theme="dark"] .theme-icon--light { display: none; }
@@ -1379,8 +1393,296 @@ kbd {
 .toast__action[hidden] { display: none; }
 
 /* ═══════════════════════════════════════════════════════════════
-   MOBILE OVERLAY
+   MODAL (analyze repo)
    ═══════════════════════════════════════════════════════════════ */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-cmdk);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-4);
+  animation: cmdk-in var(--dur) var(--ease-out);
+}
+.modal[hidden] { display: none; }
+.modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.modal__panel {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  background: var(--bg-elev-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: cmdk-panel-in var(--dur) var(--ease-spring);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+.modal__title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.modal__body {
+  padding: var(--s-5);
+  overflow-y: auto;
+  flex: 1;
+}
+.modal__desc {
+  font-size: var(--fs-base);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0 0 var(--s-4);
+}
+.modal__desc code {
+  background: var(--bg-elev-2);
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  font-size: 11px;
+}
+.modal__footer {
+  display: flex;
+  gap: var(--s-2);
+  justify-content: flex-end;
+  padding: var(--s-3) var(--s-5);
+  border-top: 1px solid var(--border);
+  background: var(--bg-elev-2);
+}
+
+/* Info banner (inside modal) */
+.info-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: var(--accent-subtle);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: var(--r-md);
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-top: var(--s-4);
+}
+.info-banner svg { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+.info-banner code {
+  background: var(--bg-elev-2);
+  padding: 1px 5px;
+  border-radius: var(--r-xs);
+  font-size: 10px;
+}
+
+/* Field (shared with setup wizard) */
+.field { margin-bottom: var(--s-3); }
+.field__label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+}
+.field__input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text);
+  font-size: 14px;
+  font-family: var(--font-sans);
+  transition: all var(--dur-fast) var(--ease);
+}
+.field__input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+.field__input::placeholder { color: var(--text-dim); }
+.field__hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 4px 0 0;
+}
+.field__hint code { font-family: var(--font-mono); font-size: 10px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   DRAWER (task detail)
+   ═══════════════════════════════════════════════════════════════ */
+
+.drawer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-cmdk);
+  display: flex;
+  justify-content: flex-end;
+  animation: cmdk-in var(--dur) var(--ease-out);
+}
+.drawer[hidden] { display: none; }
+.drawer__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.drawer__panel {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  background: var(--bg-elev-1);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  animation: drawer-in var(--dur) var(--ease-out);
+  height: 100%;
+}
+@keyframes drawer-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.drawer__title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.drawer__body {
+  padding: var(--s-4) var(--s-5);
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Drawer content */
+.drawer__section {
+  margin-bottom: var(--s-5);
+}
+.drawer__section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin: 0 0 var(--s-2);
+}
+.drawer__episode {
+  padding: var(--s-3);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  margin-bottom: var(--s-2);
+}
+.drawer__episode-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--s-1);
+}
+.drawer__episode-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 600;
+}
+.drawer__episode-agent {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.drawer__episode-strategy {
+  font-size: 13px;
+  color: var(--text);
+  margin-top: var(--s-1);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE: bottom navigation
+   ═══════════════════════════════════════════════════════════════ */
+
+.bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-topbar);
+  background: rgba(11, 13, 18, 0.95);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-top: 1px solid var(--border);
+  padding: var(--s-2) var(--s-2) calc(var(--s-2) + env(safe-area-inset-bottom));
+  justify-content: space-around;
+  align-items: center;
+}
+[data-theme="light"] .bottom-nav { background: rgba(251, 251, 252, 0.95); }
+
+.bottom-nav__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--s-1) var(--s-2);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  min-width: 48px;
+  min-height: 48px;
+  justify-content: center;
+  transition: color var(--dur-fast) var(--ease);
+}
+.bottom-nav__item.is-active { color: var(--accent); }
+.bottom-nav__item:active { transform: scale(0.92); }
+.bottom-nav__icon { display: flex; }
+.bottom-nav__label { font-size: 10px; }
+
+/* Floating action button (mobile) */
+.fab {
+  display: none;
+  position: fixed;
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  right: var(--s-4);
+  z-index: var(--z-topbar);
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-full);
+  background: var(--gradient-accent);
+  color: #fff;
+  border: none;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
+  align-items: center;
+  justify-content: center;
+  transition: all var(--dur-fast) var(--ease);
+}
+.fab:active { transform: scale(0.92); }
+.fab:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5); }
 
 .sidebar-overlay {
   position: fixed;
@@ -1422,7 +1724,15 @@ kbd {
   .topbar__title h1 { font-size: var(--fs-md); }
   .topbar__sub { display: none; }
 
-  .content { padding: var(--s-4) var(--s-3); }
+  /* En móvil, el botón "Analizar repo" se oculta del topbar y se muestra como FAB */
+  .btn--analyze { display: none; }
+  .fab { display: flex; }
+
+  .content {
+    padding: var(--s-4) var(--s-3);
+    /* Espacio para bottom nav */
+    padding-bottom: calc(var(--s-8) + 80px + env(safe-area-inset-bottom));
+  }
 
   .hero { padding: var(--s-4); border-radius: var(--r-lg); }
   .hero__title { font-size: var(--fs-xl); }
@@ -1439,6 +1749,16 @@ kbd {
   .cmdk__panel { max-width: 100%; border-radius: 0; min-height: 100vh; min-height: 100dvh; }
 
   .topbar__actions .btn span { display: none; }
+
+  /* Bottom nav visible en móvil */
+  .bottom-nav { display: flex; }
+
+  /* Modal ocupa pantalla completa en móvil */
+  .modal { padding: 0; align-items: stretch; }
+  .modal__panel { max-width: 100%; max-height: 100vh; max-height: 100dvh; border-radius: 0; }
+
+  /* Drawer ocupa pantalla completa en móvil */
+  .drawer__panel { max-width: 100%; }
 }
 
 @media (max-width: 480px) {

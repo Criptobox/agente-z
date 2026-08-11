@@ -46,8 +46,12 @@ async function createTaskFromIssue(issue) {
   const project = detectProject(issue.title + ' ' + (issue.body || ''));
   const goal = issue.title;
 
+  // Detectar si es una tarea de análisis de repo
+  const analysisTarget = detectAnalysisTarget(issue.title + ' ' + (issue.body || ''));
+  const isAnalysis = !!analysisTarget;
+
   // Pedir al modelo que proponga Definition of Done
-  const dod = await proposeDefinitionOfDone(goal, issue.body || '', project);
+  const dod = await proposeDefinitionOfDone(goal, issue.body || '', project, isAnalysis, analysisTarget);
 
   const taskNum = nextTaskNum();
   const id = `TASK-${String(taskNum).padStart(4, '0')}`;
@@ -59,7 +63,7 @@ async function createTaskFromIssue(issue) {
     description: issue.body || '',
     project,
     status: 'in_progress',
-    assigned: 'code', // primer agente por defecto
+    assigned: isAnalysis ? 'analyst' : 'code', // analyst para análisis, code para bugs
     depends_on: [],
     related_memory: [],
     autonomy: 'assisted',
@@ -111,13 +115,44 @@ function detectProject(text) {
   return null;
 }
 
+// ── Detecta si el Issue pide analizar un repo externo ──
+// Acepta formatos:
+//   analyze: https://github.com/owner/repo
+//   analizar: owner/repo
+//   auditar: https://github.com/owner/repo
+//   repo: owner/repo
+function detectAnalysisTarget(text) {
+  const patterns = [
+    /analyze:\s*(?:https?:\/\/github\.com\/)?([a-z0-9_-]+\/[a-z0-9_.-]+)/i,
+    /analizar:\s*(?:https?:\/\/github\.com\/)?([a-z0-9_-]+\/[a-z0-9_.-]+)/i,
+    /auditar:\s*(?:https?:\/\/github\.com\/)?([a-z0-9_-]+\/[a-z0-9_.-]+)/i,
+    /repo:\s*([a-z0-9_-]+\/[a-z0-9_.-]+)/i,
+    /(https?:\/\/github\.com\/[a-z0-9_-]+\/[a-z0-9_.-]+)/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m) {
+      // Normalizar: quitar URL prefix si lo hay
+      let target = m[1].replace(/^https?:\/\/github\.com\//i, '');
+      // Quitar trailing slash y query params
+      target = target.split(/[?#]/)[0].replace(/\/$/, '');
+      return target;
+    }
+  }
+  return null;
+}
+
 // ── Pide al modelo una Definition of Done + budget ──
-async function proposeDefinitionOfDone(goal, description, project) {
+async function proposeDefinitionOfDone(goal, description, project, isAnalysis = false, analysisTarget = null) {
   const ctxMem = await search(`${goal} ${description}`.slice(0, 500), {
     project,
     topK: 5,
   });
   const memSummary = ctxMem.map((m) => `- ${m.id} (${m.memory.type}, conf=${m.memory.confidence}): ${m.memory.title}`).join('\n') || '(sin memoria relevante)';
+
+  const analysisContext = isAnalysis
+    ? `\n\nIMPORTANTE: Esta es una tarea de ANÁLISIS de repo (no de fix). El agente \`analyst\` va a leer el repo \`${analysisTarget}\` y reportar hallazgos. Los gates deben ser:\n- G1: El analyst listó al menos 5 archivos del repo (verificable en el handoff)\n- G2: El analyst reportó entre 3 y 10 hallazgos concretos con archivo:línea\n- G3: Cada hallazgo tiene un fix propuesto (no solo descripción)\n- G4: Sin secretos en el reporte (security_scan sobre el output)\nBudget mayor: hasta 3 intentos, 15 min, 80k tokens (el análisis es más caro pero único).`
+    : '';
 
   const system = `Eres el Orchestrator de un sistema multi-agente. Tu trabajo: crear una Definition of Done PARA UNA TAREA antes de que ningún agente empiece a trabajar.
 
@@ -125,6 +160,7 @@ Reglas:
 - Los gates deben ser verificables por herramienta (test, assertion, diff_scan, security_scan). Nunca "el agente lo revisa".
 - Incluye SIEMPRE al menos un gate que compruebe el comportamiento correcto, no solo la ausencia del síntoma. (Esto evita que un Number()||0 declare victoria.)
 - Define un budget realista. Por defecto: 5 intentos, 25 min, 120k tokens.
+${analysisContext}
 
 Responde en JSON estricto con formato:
 {
@@ -133,7 +169,7 @@ Responde en JSON estricto con formato:
   ],
   "budget": { "max_attempts": 5, "max_minutes": 25, "max_tokens": 120000 }
 }`;
-  const user = `Tarea: ${goal}\nDescripción: ${description}\nProyecto: ${project || '(desconocido)'}\n\nMemoria relevante:\n${memSummary}`;
+  const user = `Tarea: ${goal}\nDescripción: ${description}\nProyecto: ${project || '(desconocido)'}\n${isAnalysis ? `Repo a analizar: ${analysisTarget}\n` : ''}\nMemoria relevante:\n${memSummary}`;
 
   try {
     const raw = await complete(

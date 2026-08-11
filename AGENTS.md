@@ -1,4 +1,4 @@
-# AGENTS — guía de los 10 agentes
+# AGENTS — guía de los 11 agentes
 
 Cada agente es un archivo `.md` en `agents/` con frontmatter YAML (rol, tools, permisos, autonomía) + cuerpo markdown (instrucciones del system prompt). El `runner.js` carga esta definición en runtime y la inyecta en el prompt.
 

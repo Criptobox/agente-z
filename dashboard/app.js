@@ -59,8 +59,9 @@ const DEMO = {
   },
   agents: [
     { name: 'orchestrator', icon: '🎭', role: 'Dispatcher principal', turns: 12, status: 'active' },
+    { name: 'analyst', icon: '🔍', role: 'Audita repos externos en busca de bugs y mejoras', turns: 5, status: 'active' },
     { name: 'code', icon: '⚙️', role: 'Arregla bugs en código externo', turns: 28, status: 'active' },
-    { name: 'research', icon: '🔍', role: 'Investiga causa raíz', turns: 9, status: 'active' },
+    { name: 'research', icon: '🔬', role: 'Investiga causa raíz', turns: 9, status: 'active' },
     { name: 'test', icon: '✅', role: 'Verificador independiente', turns: 18, status: 'active' },
     { name: 'security', icon: '🛡️', role: 'Audita diffs y secretos', turns: 4, status: 'idle' },
     { name: 'devil', icon: '😈', role: 'Abogado del diablo', turns: 22, status: 'active', blocks: 3 },
@@ -191,6 +192,7 @@ function switchView(name) {
   state.currentView = name;
   $$('.view').forEach(v => v.classList.toggle('is-active', v.id === `view-${name}`));
   $$('.nav__item').forEach(b => b.classList.toggle('is-active', b.dataset.target === name));
+  $$('.bottom-nav__item').forEach(b => b.classList.toggle('is-active', b.dataset.target === name));
   const titles = {
     overview: ['Vista general', 'Sistema multi-agente'],
     tasks: ['Tareas', `${state.data?.tasks?.length || 0} en total`],
@@ -725,8 +727,13 @@ window.addEventListener('appinstalled', () => {
 
 // ─── Event handlers ───
 function attachEvents() {
-  // Nav clicks
+  // Nav clicks (sidebar)
   $$('.nav__item').forEach(btn => {
+    btn.addEventListener('click', () => switchView(btn.dataset.target));
+  });
+
+  // Bottom nav (mobile)
+  $$('.bottom-nav__item').forEach(btn => {
     btn.addEventListener('click', () => switchView(btn.dataset.target));
   });
 
@@ -790,6 +797,93 @@ function attachEvents() {
     renderCmdk(e.target.value);
   });
 
+  // ─── Analyze repo modal ───
+  const analyzeBtn = $('#analyze-btn');
+  const fabAnalyze = $('#fab-analyze');
+  const analyzeModal = $('#analyze-modal');
+  const analyzeUrl = $('#analyze-url');
+  const analyzeSubmit = $('#analyze-submit');
+
+  const openAnalyzeModal = () => {
+    analyzeModal.hidden = false;
+    setTimeout(() => analyzeUrl.focus(), 100);
+  };
+  const closeAnalyzeModal = () => {
+    analyzeModal.hidden = true;
+    analyzeUrl.value = '';
+    analyzeSubmit.disabled = true;
+  };
+
+  analyzeBtn?.addEventListener('click', openAnalyzeModal);
+  fabAnalyze?.addEventListener('click', openAnalyzeModal);
+  $$('#analyze-modal [data-close]').forEach(el => el.addEventListener('click', closeAnalyzeModal));
+
+  // Validar URL mientras se escribe
+  analyzeUrl.addEventListener('input', (e) => {
+    const v = e.target.value.trim();
+    const valid = /^(https?:\/\/github\.com\/)?[a-z0-9_-]+\/[a-z0-9_.-]+$/i.test(v);
+    analyzeSubmit.disabled = !valid;
+  });
+
+  // Submit análisis
+  analyzeSubmit.addEventListener('click', async () => {
+    const url = analyzeUrl.value.trim();
+    const focus = $('#analyze-focus').value;
+    // Normalizar a owner/repo
+    const normalized = url.replace(/^https?:\/\/github\.com\//i, '').replace(/\/$/, '');
+    const title = `🔍 Analizar repo: ${normalized}`;
+    const body = `analyze: https://github.com/${normalized}${focus ? `\n\nFoco: ${focus}` : ''}`;
+
+    analyzeSubmit.disabled = true;
+    analyzeSubmit.querySelector('span').textContent = 'Creando Issue…';
+
+    try {
+      // Crear Issue vía GitHub API
+      const res = await fetch(`https://api.github.com/repos/${state.repo}/issues`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${state.token || localStorage.getItem('agent-brain-pat') || ''}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title,
+          body,
+          labels: ['agent-task'],
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || `HTTP ${res.status}`);
+      }
+
+      const issue = await res.json();
+      closeAnalyzeModal();
+      toast(`Issue #${issue.number} creado — el agente analyst está trabajando`, '🔍', 'Ver Issue', () => {
+        window.open(issue.html_url, '_blank');
+      });
+    } catch (err) {
+      toast(`Error creando Issue: ${err.message}. Necesitas un PAT configurado.`, '⚠️');
+      analyzeSubmit.disabled = false;
+      analyzeSubmit.querySelector('span').textContent = 'Lanzar análisis';
+    }
+  });
+
+  // ─── Task drawer ───
+  const taskDrawer = $('#task-drawer');
+  $$('#task-drawer [data-close]').forEach(el => el.addEventListener('click', () => {
+    taskDrawer.hidden = true;
+  }));
+
+  // Click en una card de tarea abre el drawer
+  document.addEventListener('click', (e) => {
+    const card = e.target.closest('[data-id^="TASK-"]');
+    if (!card) return;
+    const taskId = card.dataset.id;
+    openTaskDrawer(taskId);
+  });
+
   // Filter chips
   $$('.filter-chips').forEach(group => {
     group.addEventListener('click', (e) => {
@@ -815,10 +909,11 @@ function attachEvents() {
       else closeCmdk();
       return;
     }
-    // Esc → close cmdk
-    if (e.key === 'Escape' && !$('#cmdk').hidden) {
-      closeCmdk();
-      return;
+    // Esc → close any overlay
+    if (e.key === 'Escape') {
+      if (!$('#cmdk').hidden) { closeCmdk(); return; }
+      if (!$('#analyze-modal').hidden) { closeAnalyzeModal(); return; }
+      if (!$('#task-drawer').hidden) { $('#task-drawer').hidden = true; return; }
     }
     // Arrow keys in cmdk
     if (!$('#cmdk').hidden) {
@@ -866,6 +961,100 @@ function attachEvents() {
   window.addEventListener('online', () => { updateOnline(); toast('Volviste a estar en línea', '✓'); });
   window.addEventListener('offline', () => { updateOnline(); toast('Sin conexión — modo offline', '⚠️'); });
   updateOnline();
+}
+
+// ─── Task drawer ───
+function openTaskDrawer(taskId) {
+  const task = state.data?.tasks?.find(t => t.id === taskId);
+  if (!task) return;
+  const drawer = $('#task-drawer');
+  $('#drawer-title').textContent = task.id;
+
+  // Buscar episodios de esta tarea en la memoria
+  const episodes = Object.entries(state.data?.index || {})
+    .filter(([id, m]) => m.type === 'episode' && m.task_id === taskId)
+    .map(([id, m]) => ({ id, ...m }))
+    .sort((a, b) => (a.attempt || 0) - (b.attempt || 0));
+
+  const statusLabels = {
+    in_progress: 'en progreso', completed: 'completada', stuck: 'stuck',
+    needs_human: 'espera humano', handoff: 'handoff', throttled: 'throttled', blocked_by_devil: 'bloqueada',
+  };
+
+  const gates = task.definition_of_done || [];
+  const handoffs = task.handoffs || [];
+
+  $('#drawer-body').innerHTML = `
+    <div class="drawer__section">
+      <div class="card__title" style="font-size: 15px; margin-bottom: var(--s-2)">${escapeHtml(task.goal)}</div>
+      <div class="card__meta">
+        ${task.project ? `<span>proyecto <code>${escapeHtml(task.project)}</code></span>·` : ''}
+        <span>agente <strong>${escapeHtml(task.assigned || '?')}</strong></span>·
+        <span>intento <strong>${task.current_attempt || 0}/${task.budget?.max_attempts || '?'}</strong></span>
+      </div>
+      <div style="margin-top: var(--s-3)">
+        <span class="status-badge status-badge--${task.status}">${statusLabels[task.status] || task.status}</span>
+      </div>
+    </div>
+
+    ${gates.length ? `
+      <div class="drawer__section">
+        <div class="drawer__section-title">Definition of Done (${gates.length} gates)</div>
+        ${gates.map(g => `
+          <div class="drawer__episode">
+            <div class="drawer__episode-head">
+              <span class="drawer__episode-num">${g.id}</span>
+              <span class="drawer__episode-agent">${g.method || ''}</span>
+            </div>
+            <div class="drawer__episode-strategy">${escapeHtml(g.check)}</div>
+            ${g.command ? `<div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); margin-top: 4px">${escapeHtml(g.command)}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+
+    ${episodes.length ? `
+      <div class="drawer__section">
+        <div class="drawer__section-title">Historial de intentos (${episodes.length})</div>
+        ${episodes.map(ep => `
+          <div class="drawer__episode">
+            <div class="drawer__episode-head">
+              <span class="drawer__episode-num">Intento ${ep.attempt || '?'}</span>
+              <span class="drawer__episode-agent">agente: ${escapeHtml(ep.agent || '?')}</span>
+            </div>
+            <div class="drawer__episode-strategy">${escapeHtml(ep.strategy || '(sin estrategia)')}</div>
+            ${ep.gates_failed?.length ? `<div style="color: var(--danger); font-size: 11px; margin-top: 4px">gates fallidos: ${ep.gates_failed.join(', ')}</div>` : ''}
+            ${ep.gates_passed?.length ? `<div style="color: var(--success); font-size: 11px; margin-top: 2px">gates verdes: ${ep.gates_passed.join(', ')}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+
+    ${handoffs.length ? `
+      <div class="drawer__section">
+        <div class="drawer__section-title">Handoffs (${handoffs.length})</div>
+        ${handoffs.map(h => `
+          <div class="drawer__episode">
+            <div class="drawer__episode-head">
+              <span class="drawer__episode-num">${new Date(h.at).toLocaleString('es')}</span>
+              <span class="drawer__episode-agent">${escapeHtml(h.agent)}</span>
+            </div>
+            <div class="drawer__episode-strategy">ruta: ${escapeHtml(h.route || '?')} → ${escapeHtml(h.next_agent || 'fin')}</div>
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+
+    ${task.issue ? `
+      <div class="drawer__section">
+        <a class="btn btn--ghost" href="https://github.com/${state.repo || ''}/issues/${task.issue}" target="_blank" style="width: 100%; justify-content: center">
+          Ver Issue #${task.issue} en GitHub →
+        </a>
+      </div>
+    ` : ''}
+  `;
+
+  drawer.hidden = false;
 }
 
 function scrollSelectedIntoView() {
