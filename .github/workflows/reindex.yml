@@ -1,5 +1,5 @@
 # .github/workflows/reindex.yml
-# Reconstrucción nocturna del índice + embeddings + staleness check.
+# Reconstrucción nocturna del índice + embeddings + staleness check + deploy a Pages.
 # Cron diario a las 2 AM hora local.
 
 name: reindex
@@ -22,8 +22,11 @@ on:
 permissions:
   contents: write
   models: read
+  pages: write
+  id-token: write   # requerido por actions/deploy-pages@v4 para OIDC
 
 jobs:
+  # ─── Job 1: reindex + commit ───
   reindex:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -52,14 +55,29 @@ jobs:
           git config user.email "agent@bot"
           git add memory/
           git diff --staged --quiet || git commit -m "reindex: snapshot nocturno"
-          # Pull rebase para evitar rechazo si el remoto avanzó mientras corría el workflow
           git pull --rebase origin main || (echo "⚠ conflictos en pull rebase, abortando push" && git rebase --abort && exit 1)
           git push
 
-      - name: Deploy dashboard to Pages
-        if: success()
+  # ─── Job 2: deploy a GitHub Pages ───
+  # Job separado con environment: github-pages (requerido por deploy-pages@v4)
+  deploy:
+    needs: reindex
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Pages
         uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
           path: ./dashboard
-      - uses: actions/deploy-pages@v4
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
