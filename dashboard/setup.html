@@ -411,15 +411,27 @@ $('#create-vars').addEventListener('click', async () => {
   const results = [];
   let okCount = 0;
   for (const [name, value] of Object.entries(vars)) {
-    const res = await apiCall('POST', `/repos/${state.repo}/actions/variables`, { name, value });
-    if (res.ok || res.status === 422) {
-      // 422 = ya existe, la actualizamos
-      if (res.status === 422) {
-        const upd = await apiCall('PATCH', `/repos/${state.repo}/actions/variables/${name}`, { name, value });
-        if (upd.ok) { results.push(`✓ ${name} (actualizada)`); okCount++; }
-        else results.push(`✗ ${name} — error ${upd.status}`);
+    // 1. Intentar crear con POST
+    let res = await apiCall('POST', `/repos/${state.repo}/actions/variables`, { name, value });
+    if (res.ok) {
+      results.push(`✓ ${name}`); okCount++;
+      continue;
+    }
+    // 2. Si falla por cualquier motivo (ya existe, 422, 409, etc.), intentar PATCH para actualizar
+    const msg = (res.data?.message || '').toLowerCase();
+    if (res.status === 422 || res.status === 409 || msg.includes('already exists') || msg.includes('exist')) {
+      const upd = await apiCall('PATCH', `/repos/${state.repo}/actions/variables/${name}`, { name, value });
+      if (upd.ok) {
+        results.push(`✓ ${name} (actualizada)`); okCount++;
       } else {
-        results.push(`✓ ${name}`); okCount++;
+        // 3. Último recurso: borrar y recrear
+        const del = await apiCall('DELETE', `/repos/${state.repo}/actions/variables/${name}`);
+        const recreate = await apiCall('POST', `/repos/${state.repo}/actions/variables`, { name, value });
+        if (recreate.ok) {
+          results.push(`✓ ${name} (recreada)`); okCount++;
+        } else {
+          results.push(`✗ ${name} — no se pudo crear ni actualizar (${recreate.status})`);
+        }
       }
     } else {
       results.push(`✗ ${name} — ${res.data?.message || res.status}`);
