@@ -1,0 +1,825 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>agent-brain · asistente de configuración</title>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="icon" type="image/svg+xml" href="./icon.svg">
+</head>
+<body>
+
+<div class="setup">
+  <div class="setup__container">
+
+    <!-- Header -->
+    <header class="setup__header">
+      <div class="setup__brand">
+        <div class="brand__mark">
+          <svg viewBox="0 0 32 32" width="22" height="22">
+            <defs>
+              <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#6366f1"/>
+                <stop offset="100%" stop-color="#a855f7"/>
+              </linearGradient>
+            </defs>
+            <circle cx="16" cy="16" r="3" fill="url(#g)"/>
+            <circle cx="6" cy="8" r="1.8" fill="#6366f1"/>
+            <circle cx="26" cy="8" r="1.8" fill="#a855f7"/>
+            <circle cx="6" cy="24" r="1.8" fill="#10b981"/>
+            <circle cx="26" cy="24" r="1.8" fill="#f59e0b"/>
+            <g stroke="url(#g)" stroke-width="0.8" opacity="0.7" fill="none">
+              <line x1="16" y1="16" x2="6" y2="8"/>
+              <line x1="16" y1="16" x2="26" y2="8"/>
+              <line x1="16" y1="16" x2="6" y2="24"/>
+              <line x1="16" y1="16" x2="26" y2="24"/>
+            </g>
+          </svg>
+        </div>
+        <div>
+          <h1 class="setup__title">agent-brain</h1>
+          <p class="setup__subtitle">Asistente de configuración · 5 pasos · 2 minutos</p>
+        </div>
+      </div>
+      <button class="icon-btn icon-btn--ghost" id="theme-toggle" aria-label="Tema">
+        <svg class="theme-icon theme-icon--dark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="theme-icon theme-icon--light" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/></svg>
+      </button>
+    </header>
+
+    <!-- Progress -->
+    <div class="setup__progress">
+      <div class="setup__progress-bar"><div class="setup__progress-fill" id="progress-fill" style="width: 0%"></div></div>
+      <div class="setup__steps">
+        <span class="setup__step is-active" data-step="1">1. Token</span>
+        <span class="setup__step" data-step="2">2. Repo</span>
+        <span class="setup__step" data-step="3">3. Variables</span>
+        <span class="setup__step" data-step="4">4. Pages</span>
+        <span class="setup__step" data-step="5">5. Listo</span>
+      </div>
+    </div>
+
+    <!-- Step 1: Token -->
+    <section class="step is-active" id="step-1">
+      <h2 class="step__title">Conecta tu cuenta de GitHub</h2>
+      <p class="step__desc">Necesitas un Personal Access Token con permisos <code>repo</code> y <code>workflow</code>. Se usa solo en esta sesión, en tu navegador — no se guarda ni se envía a ningún servidor.</p>
+
+      <div class="field">
+        <label class="field__label" for="pat">Personal Access Token (PAT)</label>
+        <input class="field__input" type="password" id="pat" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false">
+        <p class="field__hint">
+          ¿No tienes uno?
+          <a href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=agent-brain-setup" target="_blank" rel="noopener">Créalo aquí en 30s →</a>
+        </p>
+      </div>
+
+      <div class="step__actions">
+        <button class="btn btn--primary" id="test-token" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          <span>Probar conexión</span>
+        </button>
+      </div>
+
+      <div class="result" id="token-result" hidden></div>
+    </section>
+
+    <!-- Step 2: Repo -->
+    <section class="step" id="step-2">
+      <h2 class="step__title">Verifica tu repositorio</h2>
+      <p class="step__desc">El repo donde subiste agent-brain. Debe ser <strong>público</strong> (Actions es ilimitado gratis solo en públicos).</p>
+
+      <div class="field">
+        <label class="field__label" for="repo">Repositorio (owner/name)</label>
+        <input class="field__input" type="text" id="repo" placeholder="tu-usuario/agent-brain" autocomplete="off" spellcheck="false">
+        <p class="field__hint">Ejemplo: <code>kros/agent-brain</code></p>
+      </div>
+
+      <div class="step__actions">
+        <button class="btn btn--ghost" id="back-2">← Atrás</button>
+        <button class="btn btn--primary" id="verify-repo" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          <span>Verificar repo</span>
+        </button>
+      </div>
+
+      <div class="result" id="repo-result" hidden></div>
+    </section>
+
+    <!-- Step 3: Variables -->
+    <section class="step" id="step-3">
+      <h2 class="step__title">Configura las variables</h2>
+      <p class="step__desc">Estos son los valores por defecto. Edita solo lo que necesites (especialmente <code>TARGET_REPOS</code> y <code>TIMEZONE</code>).</p>
+
+      <div class="form-grid" id="vars-form">
+        <div class="field">
+          <label class="field__label">TARGET_REPOS</label>
+          <input class="field__input" type="text" data-var="TARGET_REPOS" value="tu-usuario/tiendamax-web">
+          <p class="field__hint">Repo(s) que los agentes analizarán. Separa por coma si hay varios.</p>
+        </div>
+        <div class="field">
+          <label class="field__label">TIMEZONE</label>
+          <input class="field__input" type="text" data-var="TIMEZONE" value="America/Havana">
+          <p class="field__hint">Para el cron del diario (3 AM local).</p>
+        </div>
+        <div class="field">
+          <label class="field__label">MODELS_PRIMARY</label>
+          <input class="field__input" type="text" data-var="MODELS_PRIMARY" value="gpt-4o-mini">
+          <p class="field__hint"><a href="https://github.com/marketplace/models" target="_blank">Catálogo →</a></p>
+        </div>
+        <div class="field">
+          <label class="field__label">MODELS_FALLBACK</label>
+          <input class="field__input" type="text" data-var="MODELS_FALLBACK" value="phi-3-mini-4k-instruct">
+        </div>
+        <div class="field">
+          <label class="field__label">EMBEDDINGS_MODEL</label>
+          <input class="field__input" type="text" data-var="EMBEDDINGS_MODEL" value="text-embedding-3-small">
+        </div>
+        <div class="field">
+          <label class="field__label">BUDGET_DAILY_TOKENS</label>
+          <input class="field__input" type="number" data-var="BUDGET_DAILY_TOKENS" value="120000">
+        </div>
+        <div class="field">
+          <label class="field__label">BUDGET_DAILY_ACTIONS_MINUTES</label>
+          <input class="field__input" type="number" data-var="BUDGET_DAILY_ACTIONS_MINUTES" value="180">
+        </div>
+        <div class="field">
+          <label class="field__label">BUDGET_WARN_PERCENT</label>
+          <input class="field__input" type="number" data-var="BUDGET_WARN_PERCENT" value="80">
+        </div>
+      </div>
+
+      <div class="step__actions">
+        <button class="btn btn--ghost" id="back-3">← Atrás</button>
+        <button class="btn btn--primary" id="create-vars">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          <span>Crear 8 variables</span>
+        </button>
+      </div>
+
+      <div class="result" id="vars-result" hidden></div>
+    </section>
+
+    <!-- Step 4: Pages -->
+    <section class="step" id="step-4">
+      <h2 class="step__title">Habilita GitHub Pages</h2>
+      <p class="step__desc">Esto publica tu dashboard en <code>https://TU-USUARIO.github.io/agent-brain/</code>. El workflow <code>reindex.yml</code> lo actualiza cada noche automáticamente.</p>
+
+      <div class="step__actions">
+        <button class="btn btn--ghost" id="back-4">← Atrás</button>
+        <button class="btn btn--primary" id="enable-pages">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+          <span>Habilitar Pages</span>
+        </button>
+      </div>
+
+      <div class="result" id="pages-result" hidden></div>
+    </section>
+
+    <!-- Step 5: Deploy + Done -->
+    <section class="step" id="step-5">
+      <h2 class="step__title">Despliega el dashboard</h2>
+      <p class="step__desc">Lanza el workflow <code>reindex</code> para que construya y publique el dashboard ahora (sin esperar al cron nocturno).</p>
+
+      <div class="step__actions">
+        <button class="btn btn--ghost" id="back-5">← Atrás</button>
+        <button class="btn btn--primary" id="deploy-now">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 12 12 5 19 12"/><line x1="12" y1="5" x2="12" y2="19"/></svg>
+          <span>Desplegar ahora</span>
+        </button>
+      </div>
+
+      <div class="result" id="deploy-result" hidden></div>
+
+      <div class="done" id="done-card" hidden>
+        <div class="done__icon">🎉</div>
+        <h2 class="done__title">¡Sistema desplegado!</h2>
+        <p class="done__desc">Tu agent-brain está en producción. Estos son tus enlaces:</p>
+
+        <div class="done__links">
+          <a class="done__link" id="link-dashboard" target="_blank" rel="noopener">
+            <span class="done__link-icon">📊</span>
+            <span class="done__link-body">
+              <strong>Dashboard</strong>
+              <small>Tu PWA instalable</small>
+            </span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10"/><path d="M7 17L17 7"/></svg>
+          </a>
+          <a class="done__link" id="link-actions" target="_blank" rel="noopener">
+            <span class="done__link-icon">⚡</span>
+            <span class="done__link-body">
+              <strong>Actions</strong>
+              <small>Ver workflows en ejecución</small>
+            </span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10"/><path d="M7 17L17 7"/></svg>
+          </a>
+          <a class="done__link" id="link-new-issue" target="_blank" rel="noopener">
+            <span class="done__link-icon">📝</span>
+            <span class="done__link-body">
+              <strong>Crear primer Issue</strong>
+              <small>Label: <code>agent-task</code></small>
+            </span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10"/><path d="M7 17L17 7"/></svg>
+          </a>
+        </div>
+
+        <div class="done__next">
+          <h3>¿Qué hacer ahora?</h3>
+          <ol>
+            <li>Espera 2-3 minutos a que termine el workflow <code>reindex</code>.</li>
+            <li>Abre el dashboard — si dice "sin datos", ejecuta <code>reindex</code> manualmente desde Actions.</li>
+            <li>Crea tu primer Issue con label <code>agent-task</code> para ver el loop en vivo.</li>
+            <li>Lee <a href="https://github.com/OWNER/agent-brain/blob/main/DEPLOY.md" id="link-deploy-md" target="_blank">DEPLOY.md</a> para el troubleshooting.</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- Error display -->
+    <div class="error-banner" id="error-banner" hidden>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span id="error-text"></span>
+      <button class="icon-btn icon-btn--ghost" id="error-close" aria-label="Cerrar">×</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// Setup wizard — llama a la API de GitHub directamente desde el browser.
+// El PAT se usa solo en memoria, nunca se persiste.
+// ═══════════════════════════════════════════════════════════════
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+const API = 'https://api.github.com';
+
+const state = {
+  token: null,
+  user: null,
+  repo: null,        // "owner/name"
+  repoInfo: null,    // info del repo
+  currentStep: 1,
+};
+
+// ─── Helpers ───
+function apiHeaders() {
+  return {
+    'Authorization': `Bearer ${state.token}`,
+    'Accept': 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+}
+
+async function apiCall(method, path, body = null) {
+  const opts = {
+    method,
+    headers: apiHeaders(),
+  };
+  if (body) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(`${API}${path}`, opts);
+  let data = null;
+  try { data = await res.json(); } catch {}
+  return { ok: res.ok, status: res.status, data, headers: res.headers };
+}
+
+function showError(msg) {
+  const banner = $('#error-banner');
+  $('#error-text').textContent = msg;
+  banner.hidden = false;
+  clearTimeout(showError._t);
+  showError._t = setTimeout(() => { banner.hidden = true; }, 8000);
+}
+
+function showResult(elId, html) {
+  const el = $('#' + elId);
+  el.innerHTML = html;
+  el.hidden = false;
+}
+
+function setStep(n) {
+  state.currentStep = n;
+  $$('.step').forEach(s => s.classList.toggle('is-active', s.id === `step-${n}`));
+  $$('.setup__step').forEach(s => s.classList.toggle('is-active', parseInt(s.dataset.step) <= n));
+  $('#progress-fill').style.width = `${((n - 1) / 5) * 100}%`;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ─── Step 1: Token ───
+$('#pat').addEventListener('input', (e) => {
+  const v = e.target.value.trim();
+  $('#test-token').disabled = v.length < 10;
+});
+
+$('#test-token').addEventListener('click', async () => {
+  const token = $('#pat').value.trim();
+  if (!token) return;
+  state.token = token;
+  const btn = $('#test-token');
+  btn.disabled = true;
+  btn.querySelector('span').textContent = 'Probando…';
+
+  try {
+    const res = await apiCall('GET', '/user');
+    if (!res.ok) {
+      let msg = `GitHub respondió ${res.status}`;
+      if (res.status === 401) msg = 'Token inválido o expirado. Verifica que tenga permisos "repo" y "workflow".';
+      if (res.status === 403) msg = 'Rate limit alcanzado. Espera 1 minuto e inténtalo de nuevo.';
+      showError(msg);
+      btn.disabled = false;
+      btn.querySelector('span').textContent = 'Probar conexión';
+      return;
+    }
+    state.user = res.data;
+    showResult('token-result', `
+      <div class="result__ok">
+        <strong>✓ Conectado como @${res.data.login}</strong>
+        <div class="result__meta">Nombre: ${res.data.name || res.data.login}</div>
+      </div>
+    `);
+    setTimeout(() => setStep(2), 800);
+  } catch (err) {
+    showError(`Error de red: ${err.message}`);
+    btn.disabled = false;
+    btn.querySelector('span').textContent = 'Probar conexión';
+  }
+});
+
+// ─── Step 2: Repo ───
+$('#repo').addEventListener('input', (e) => {
+  $('#verify-repo').disabled = !e.target.value.trim();
+});
+
+$('#verify-repo').addEventListener('click', async () => {
+  const repo = $('#repo').value.trim();
+  if (!repo.includes('/')) {
+    showError('Formato incorrecto. Debe ser "owner/name", por ejemplo: kros/agent-brain');
+    return;
+  }
+  state.repo = repo;
+  const btn = $('#verify-repo');
+  btn.disabled = true;
+  btn.querySelector('span').textContent = 'Verificando…';
+
+  const res = await apiCall('GET', `/repos/${repo}`);
+  if (!res.ok) {
+    if (res.status === 404) showError(`Repo "${repo}" no encontrado. ¿Lo creaste ya? ¿Está bien escrito?`);
+    else showError(`Error ${res.status} al verificar repo.`);
+    btn.disabled = false;
+    btn.querySelector('span').textContent = 'Verificar repo';
+    return;
+  }
+  state.repoInfo = res.data;
+  const issues = [];
+  if (!res.data.public && !res.data.visibility === 'public') issues.push('⚠️ El repo NO es público — Actions será limitado. Considera hacerlo público.');
+  if (res.data.permissions?.admin !== true) issues.push('⚠️ No tienes permisos de admin en este repo. No podrás configurar variables ni Pages.');
+
+  showResult('repo-result', `
+    <div class="result__ok">
+      <strong>✓ ${res.data.full_name}</strong>
+      <div class="result__meta">
+        ${res.data.visibility === 'public' ? '🟢 público' : '🔴 privado'} ·
+        ${res.data.permissions?.admin ? '✓ admin' : '✗ sin admin'} ·
+        default branch: <code>${res.data.default_branch}</code>
+      </div>
+      ${issues.length ? `<div class="result__warn">${issues.join('<br>')}</div>` : ''}
+    </div>
+  `);
+
+  if (res.data.permissions?.admin !== true) {
+    btn.disabled = false;
+    btn.querySelector('span').textContent = 'Verificar repo';
+    return;
+  }
+  setTimeout(() => setStep(3), 1000);
+});
+
+// ─── Step 3: Variables ───
+$('#create-vars').addEventListener('click', async () => {
+  const btn = $('#create-vars');
+  btn.disabled = true;
+  btn.querySelector('span').textContent = 'Creando…';
+
+  const vars = {};
+  $$('[data-var]').forEach(input => {
+    vars[input.dataset.var] = input.value.trim();
+  });
+
+  const results = [];
+  let okCount = 0;
+  for (const [name, value] of Object.entries(vars)) {
+    const res = await apiCall('POST', `/repos/${state.repo}/actions/variables`, { name, value });
+    if (res.ok || res.status === 422) {
+      // 422 = ya existe, la actualizamos
+      if (res.status === 422) {
+        const upd = await apiCall('PATCH', `/repos/${state.repo}/actions/variables/${name}`, { name, value });
+        if (upd.ok) { results.push(`✓ ${name} (actualizada)`); okCount++; }
+        else results.push(`✗ ${name} — error ${upd.status}`);
+      } else {
+        results.push(`✓ ${name}`); okCount++;
+      }
+    } else {
+      results.push(`✗ ${name} — ${res.data?.message || res.status}`);
+    }
+  }
+
+  showResult('vars-result', `
+    <div class="result__ok">
+      <strong>✓ ${okCount}/${Object.keys(vars).length} variables configuradas</strong>
+      <ul class="result__list">${results.map(r => `<li>${r}</li>`).join('')}</ul>
+    </div>
+  `);
+
+  if (okCount === Object.keys(vars).length) {
+    setTimeout(() => setStep(4), 1200);
+  } else {
+    btn.disabled = false;
+    btn.querySelector('span').textContent = 'Reintentar';
+  }
+});
+
+// ─── Step 4: Pages ───
+$('#enable-pages').addEventListener('click', async () => {
+  const btn = $('#enable-pages');
+  btn.disabled = true;
+  btn.querySelector('span').textContent = 'Habilitando…';
+
+  // Intentar crear; si ya existe, actualizar
+  let res = await apiCall('POST', `/repos/${state.repo}/pages`, {
+    source: { build_type: 'workflow' }
+  });
+
+  if (res.status === 409 || res.status === 422) {
+    // Ya existe — actualizar
+    res = await apiCall('PUT', `/repos/${state.repo}/pages`, {
+      source: { build_type: 'workflow' }
+    });
+  }
+
+  if (!res.ok) {
+    showError(`Error habilitando Pages: ${res.data?.message || res.status}`);
+    btn.disabled = false;
+    btn.querySelector('span').textContent = 'Habilitar Pages';
+    return;
+  }
+
+  const pagesUrl = res.data.html_url || `https://${state.repo.split('/')[0]}.github.io/${state.repo.split('/')[1]}/`;
+  showResult('pages-result', `
+    <div class="result__ok">
+      <strong>✓ Pages habilitado</strong>
+      <div class="result__meta">URL: <a href="${pagesUrl}" target="_blank">${pagesUrl}</a></div>
+      <div class="result__meta" style="margin-top:8px">El dashboard se publicará tras el primer deploy (siguiente paso).</div>
+    </div>
+  `);
+  setTimeout(() => setStep(5), 1000);
+});
+
+// ─── Step 5: Deploy ───
+$('#deploy-now').addEventListener('click', async () => {
+  const btn = $('#deploy-now');
+  btn.disabled = true;
+  btn.querySelector('span').textContent = 'Lanzando…';
+
+  // Disparar workflow reindex
+  const res = await apiCall('POST', `/repos/${state.repo}/actions/workflows/reindex.yml/dispatches`, {
+    ref: state.repoInfo?.default_branch || 'main'
+  });
+
+  if (!res.ok) {
+    if (res.status === 404) {
+      showError('Workflow reindex.yml no encontrado. ¿Sí subiste la carpeta .github/workflows/?');
+    } else if (res.status === 422) {
+      showError('El workflow está deshabilitado. Ve a Actions en GitHub y habilítalo manualmente, luego vuelve.');
+    } else {
+      showError(`Error lanzando workflow: ${res.status}`);
+    }
+    btn.disabled = false;
+    btn.querySelector('span').textContent = 'Desplegar ahora';
+    return;
+  }
+
+  showResult('deploy-result', `
+    <div class="result__ok">
+      <strong>✓ Workflow <code>reindex</code> lanzado</strong>
+      <div class="result__meta">Tarda 2-3 minutos. Puedes verlo en:</div>
+      <a class="result__link" href="https://github.com/${state.repo}/actions" target="_blank">https://github.com/${state.repo}/actions</a>
+    </div>
+  `);
+
+  // Mostrar card final
+  const owner = state.repo.split('/')[0];
+  const name = state.repo.split('/')[1];
+  const pagesUrl = `https://${owner}.github.io/${name}/`;
+  $('#link-dashboard').href = pagesUrl;
+  $('#link-actions').href = `https://github.com/${state.repo}/actions`;
+  $('#link-new-issue').href = `https://github.com/${state.repo}/issues/new?labels=agent-task`;
+  $('#link-deploy-md').href = `https://github.com/${state.repo}/blob/main/DEPLOY.md`;
+  setTimeout(() => {
+    $('#done-card').hidden = false;
+    $('#progress-fill').style.width = '100%';
+    $('#done-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 1000);
+});
+
+// ─── Navigation back ───
+$('#back-2').addEventListener('click', () => setStep(1));
+$('#back-3').addEventListener('click', () => setStep(2));
+$('#back-4').addEventListener('click', () => setStep(3));
+$('#back-5').addEventListener('click', () => setStep(4));
+
+// ─── Error close ───
+$('#error-close').addEventListener('click', () => { $('#error-banner').hidden = true; });
+
+// ─── Theme ───
+function loadTheme() {
+  const saved = localStorage.getItem('agent-brain-theme');
+  if (saved) document.documentElement.dataset.theme = saved;
+  else if (window.matchMedia?.('(prefers-color-scheme: light)').matches) document.documentElement.dataset.theme = 'light';
+}
+function toggleTheme() {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem('agent-brain-theme', next);
+}
+loadTheme();
+$('#theme-toggle').addEventListener('click', toggleTheme);
+
+// ─── Enter key advances step ───
+$('#pat').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !$('#test-token').disabled) $('#test-token').click(); });
+$('#repo').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !$('#verify-repo').disabled) $('#verify-repo').click(); });
+
+console.log('%c⚠️ Advertencia: nunca pegues tu PAT en una web que no controles. Esta página es local — el PAT solo se usa en memoria.', 'color: #f59e0b; font-weight: bold; font-size: 14px');
+console.log('%cSi quieres verificar la seguridad: el código fuente está en dashboard/setup.html', 'color: #6b7280');
+</script>
+
+<style>
+/* Setup wizard specific styles */
+.setup {
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: var(--s-6) var(--s-4);
+  display: flex;
+  justify-content: center;
+}
+.setup__container {
+  width: 100%;
+  max-width: 720px;
+  background: var(--bg-elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: var(--s-6);
+  position: relative;
+}
+@media (max-width: 640px) {
+  .setup { padding: var(--s-2); }
+  .setup__container { padding: var(--s-4); border-radius: var(--r-lg); }
+}
+.setup__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+}
+.setup__brand { display: flex; align-items: center; gap: var(--s-3); }
+.brand__mark {
+  width: 40px; height: 40px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  display: flex; align-items: center; justify-content: center;
+}
+.setup__title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+.setup__subtitle { font-size: 12px; color: var(--text-muted); margin: 2px 0 0; }
+
+/* Progress */
+.setup__progress { margin-bottom: var(--s-6); }
+.setup__progress-bar {
+  height: 4px;
+  background: var(--bg-elev-3);
+  border-radius: var(--r-full);
+  overflow: hidden;
+  margin-bottom: var(--s-3);
+}
+.setup__progress-fill {
+  height: 100%;
+  background: var(--gradient-accent);
+  border-radius: var(--r-full);
+  transition: width 0.5s var(--ease-out);
+}
+.setup__steps {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.setup__step { font-weight: 500; transition: color var(--dur) var(--ease); }
+.setup__step.is-active { color: var(--accent); }
+
+/* Steps */
+.step { display: none; animation: fade-in var(--dur) var(--ease-out); }
+.step.is-active { display: block; }
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.step__title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 var(--s-2); }
+.step__desc { color: var(--text-secondary); font-size: 14px; line-height: 1.6; margin: 0 0 var(--s-5); }
+.step__desc strong { color: var(--text); }
+.step__desc code { background: var(--bg-elev-2); padding: 1px 6px; border-radius: var(--r-xs); border: 1px solid var(--border); font-size: 12px; }
+.step__actions {
+  display: flex;
+  gap: var(--s-2);
+  justify-content: flex-end;
+  margin-top: var(--s-4);
+}
+
+/* Fields */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--s-3);
+}
+@media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; } }
+.field { margin-bottom: var(--s-3); }
+.field__label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 6px;
+  letter-spacing: -0.005em;
+}
+.field__label code { font-family: var(--font-mono); font-size: 11px; color: var(--accent); }
+.field__input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text);
+  font-size: 14px;
+  font-family: var(--font-mono);
+  transition: all var(--dur-fast) var(--ease);
+}
+.field__input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+.field__input::placeholder { color: var(--text-dim); }
+.field__hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 4px 0 0;
+}
+.field__hint a { color: var(--accent); }
+.field__hint code { font-family: var(--font-mono); font-size: 10px; }
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--r-md);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--dur-fast) var(--ease);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn--primary {
+  background: var(--gradient-accent);
+  color: #fff;
+  border: none;
+  box-shadow: 0 1px 3px rgba(99, 102, 241, 0.3);
+}
+.btn--primary:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+.btn--ghost {
+  background: var(--bg-elev-2);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.btn--ghost:hover { background: var(--bg-elev-3); color: var(--text); }
+
+/* Result */
+.result {
+  margin-top: var(--s-4);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-md);
+  animation: fade-in var(--dur) var(--ease-out);
+}
+.result__ok {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: var(--text);
+  font-size: 13px;
+}
+.result__ok strong { color: var(--success); }
+.result__meta { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
+.result__meta a { color: var(--accent); }
+.result__warn { color: var(--warning); font-size: 12px; margin-top: 8px; }
+.result__list { list-style: none; padding: 0; margin: 8px 0 0; font-family: var(--font-mono); font-size: 11px; }
+.result__list li { padding: 2px 0; color: var(--text-secondary); }
+.result__link {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--accent);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+/* Error banner */
+.error-banner {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom) + var(--s-4));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--danger);
+  color: #fff;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: calc(100vw - 32px);
+  z-index: 1000;
+  font-size: 13px;
+  font-weight: 500;
+  animation: fade-in var(--dur) var(--ease-out);
+}
+.error-banner button { color: #fff; }
+
+/* Done card */
+.done {
+  margin-top: var(--s-6);
+  padding: var(--s-6);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  text-align: center;
+  animation: fade-in var(--dur-slow) var(--ease-out);
+}
+.done__icon { font-size: 48px; margin-bottom: var(--s-2); }
+.done__title { font-size: 24px; font-weight: 700; margin: 0 0 var(--s-2); letter-spacing: -0.02em; }
+.done__desc { color: var(--text-secondary); font-size: 14px; margin: 0 0 var(--s-5); }
+.done__links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--s-3);
+  margin-bottom: var(--s-5);
+  text-align: left;
+}
+.done__link {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--bg-elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text);
+  transition: all var(--dur-fast) var(--ease);
+  text-decoration: none;
+}
+.done__link:hover {
+  border-color: var(--accent);
+  background: var(--bg-elev-3);
+  transform: translateY(-1px);
+}
+.done__link-icon { font-size: 22px; flex-shrink: 0; }
+.done__link-body { flex: 1; min-width: 0; }
+.done__link-body strong { display: block; font-size: 13px; font-weight: 600; }
+.done__link-body small { color: var(--text-muted); font-size: 11px; }
+.done__link-body code { font-family: var(--font-mono); font-size: 10px; }
+.done__next {
+  text-align: left;
+  padding: var(--s-4);
+  background: var(--bg-elev-1);
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+}
+.done__next h3 { font-size: 13px; font-weight: 600; margin: 0 0 var(--s-2); color: var(--text); }
+.done__next ol { margin: 0; padding-left: var(--s-5); font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+.done__next a { color: var(--accent); }
+.done__next code { font-family: var(--font-mono); font-size: 11px; background: var(--bg-elev-2); padding: 1px 5px; border-radius: var(--r-xs); }
+
+/* Theme icons */
+.theme-icon { display: none; }
+[data-theme="dark"] .theme-icon--dark { display: block; }
+[data-theme="light"] .theme-icon--light { display: block; }
+</style>
+
+</body>
+</html>
