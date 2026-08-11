@@ -459,40 +459,93 @@ $('#enable-pages').addEventListener('click', async () => {
   btn.disabled = true;
   btn.querySelector('span').textContent = 'Habilitando…';
 
+  // Timeout de seguridad: si GitHub no responde en 15s, mostrar error claro
+  const timeoutMs = 15_000;
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('timeout')), timeoutMs)
+  );
+
   const branch = state.repoInfo?.default_branch || 'main';
-  // La API de GitHub Pages requiere branch + path incluso con build_type: workflow
   const pagesSource = { build_type: 'workflow', branch, path: '/' };
 
-  // Intentar crear; si ya existe (409/422), actualizar
-  let res = await apiCall('POST', `/repos/${state.repo}/pages`, {
-    source: pagesSource
-  });
+  try {
+    // 0. Primero verificar el estado actual de Pages con GET
+    const getStatus = await Promise.race([
+      apiCall('GET', `/repos/${state.repo}/pages`),
+      timeoutPromise
+    ]);
 
-  if (res.status === 409 || res.status === 422) {
-    // Ya existe — actualizar
-    res = await apiCall('PUT', `/repos/${state.repo}/pages`, {
-      source: pagesSource
-    });
-  }
+    let pagesAlreadyOk = false;
+    if (getStatus.ok && getStatus.data) {
+      const src = getStatus.data.source || {};
+      const buildType = src.build_type || (src.branch ? 'legacy' : null);
+      console.log('[pages] estado actual:', getStatus.data);
+      if (buildType === 'workflow') {
+        // Pages ya está configurado con GitHub Actions — perfecto
+        pagesAlreadyOk = true;
+        const pagesUrl = getStatus.data.html_url || `https://${state.repo.split('/')[0]}.github.io/${state.repo.split('/')[1]}/`;
+        showResult('pages-result', `
+          <div class="result__ok">
+            <strong>✓ Pages ya estaba configurado correctamente</strong>
+            <div class="result__meta">Source: GitHub Actions</div>
+            <div class="result__meta">URL: <a href="${pagesUrl}" target="_blank">${pagesUrl}</a></div>
+            <div class="result__meta" style="margin-top:8px">Continúa con el siguiente paso para lanzar el deploy.</div>
+          </div>
+        `);
+        setTimeout(() => setStep(5), 1200);
+        return;
+      }
+    }
 
-  if (!res.ok) {
-    let msg = `Error ${res.status} habilitando Pages`;
-    if (res.data?.message) msg += `: ${res.data.message}`;
+    // 1. Si Pages existe pero no está en modo workflow, actualizar con PUT
+    let res;
+    if (getStatus.ok) {
+      res = await Promise.race([
+        apiCall('PUT', `/repos/${state.repo}/pages`, { source: pagesSource }),
+        timeoutPromise
+      ]);
+    } else {
+      // 2. Si no existe, crear con POST
+      res = await Promise.race([
+        apiCall('POST', `/repos/${state.repo}/pages`, { source: pagesSource }),
+        timeoutPromise
+      ]);
+      // 409 = ya existe (raro si GET dijo 404, pero pasa) → PUT
+      if (res.status === 409 || res.status === 422) {
+        res = await Promise.race([
+          apiCall('PUT', `/repos/${state.repo}/pages`, { source: pagesSource }),
+          timeoutPromise
+        ]);
+      }
+    }
+
+    if (!res.ok) {
+      let msg = `Error ${res.status} configurando Pages`;
+      if (res.data?.message) msg += `: ${res.data.message}`;
+      showError(msg);
+      btn.disabled = false;
+      btn.querySelector('span').textContent = 'Habilitar Pages';
+      return;
+    }
+
+    const pagesUrl = res.data?.html_url || `https://${state.repo.split('/')[0]}.github.io/${state.repo.split('/')[1]}/`;
+    showResult('pages-result', `
+      <div class="result__ok">
+        <strong>✓ Pages habilitado</strong>
+        <div class="result__meta">Source: GitHub Actions</div>
+        <div class="result__meta">URL: <a href="${pagesUrl}" target="_blank">${pagesUrl}</a></div>
+        <div class="result__meta" style="margin-top:8px">El dashboard se publicará tras el siguiente paso.</div>
+      </div>
+    `);
+    setTimeout(() => setStep(5), 1000);
+  } catch (err) {
+    const msg = err.message === 'timeout'
+      ? `GitHub no respondió en ${timeoutMs/1000}s. Tu conexión o la API de GitHub están lentas. Verifica manualmente en Settings → Pages del repo, y si ya está en "GitHub Actions", salta al paso 5.`
+      : `Error de red: ${err.message}`;
     showError(msg);
     btn.disabled = false;
     btn.querySelector('span').textContent = 'Habilitar Pages';
-    return;
   }
-
-  const pagesUrl = res.data.html_url || `https://${state.repo.split('/')[0]}.github.io/${state.repo.split('/')[1]}/`;
-  showResult('pages-result', `
-    <div class="result__ok">
-      <strong>✓ Pages habilitado</strong>
-      <div class="result__meta">URL: <a href="${pagesUrl}" target="_blank">${pagesUrl}</a></div>
-      <div class="result__meta" style="margin-top:8px">El dashboard se publicará tras el primer deploy (siguiente paso).</div>
-    </div>
-  `);
-  setTimeout(() => setStep(5), 1000);
 });
 
 // ─── Step 5: Deploy ───
