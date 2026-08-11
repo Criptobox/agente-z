@@ -357,26 +357,60 @@ async function main() {
   // Compilar prompt
   const { system, user } = buildPrompt(agentDef, task, ctx);
 
-  // Llamar al modelo
+  // ─── BUCLE AGENTIC ───
+  // El modelo puede devolver tool_calls → ejecutamos → reenviamos resultados → repite hasta que no haya más tool_calls
   const messages = [
     { role: 'system', content: system },
     { role: 'user', content: user },
   ];
-  console.log('[runner] llamando al modelo...');
-  const rawOutput = await complete(messages, { jsonMode: true, temperature: 0.2 });
-  console.log(`[runner] respuesta recibida (${rawOutput.length} chars)`);
 
-  // Parsear
-  const output = parseAgentOutput(rawOutput);
-  console.log(`[runner] ruta=${output.route} findings=${output.findings?.length || 0} writes=${output.memory_writes?.length || 0}`);
+  const MAX_ITERATIONS = 5; // límite de seguridad
+  let output = null;
+  const allToolResults = [];
 
-  // Ejecutar tool_calls si las hay
-  const toolResults = [];
-  for (const call of output.tool_calls || []) {
-    console.log(`[runner] tool_call: ${call.name}`);
-    const result = await runTool(call.name, call.input || {}, { task }, agentDef.permissions);
-    toolResults.push({ name: call.name, ...result });
+  for (let iter = 1; iter <= MAX_ITERATIONS; iter++) {
+    console.log(`[runner] iteración ${iter}/${MAX_ITERATIONS} — llamando al modelo...`);
+    const rawOutput = await complete(messages, { jsonMode: true, temperature: 0.2 });
+    console.log(`[runner] respuesta recibida (${rawOutput.length} chars)`);
+
+    output = parseAgentOutput(rawOutput);
+    console.log(`[runner] ruta=${output.route} findings=${output.findings?.length || 0} writes=${output.memory_writes?.length || 0} tool_calls=${output.tool_calls?.length || 0}`);
+
+    // Si no hay tool_calls, terminamos
+    if (!output.tool_calls || output.tool_calls.length === 0) {
+      console.log('[runner] no hay más tool_calls — terminando');
+      break;
+    }
+
+    // Ejecutar las tool_calls
+    const iterResults = [];
+    for (const call of output.tool_calls) {
+      console.log(`[runner] tool_call [iter ${iter}]: ${call.name}`);
+      const result = await runTool(call.name, call.input || {}, { task }, agentDef.permissions);
+      iterResults.push({ name: call.name, input: call.input, ...result });
+      allToolResults.push({ name: call.name, input: call.input, ...result, iteration: iter });
+      console.log(`[runner] tool_call ${call.name} → ok=${result.ok}`);
+    }
+
+    // Reenviar resultados al modelo para que continúe
+    messages.push({ role: 'assistant', content: rawOutput });
+    messages.push({
+      role: 'user',
+      content: `Resultados de tus tool_calls:\n\n${JSON.stringify(iterResults, null, 2)}\n\nAhora continúa tu trabajo con esta nueva información. Si ya tienes todo lo que necesitas, devuelve tu output final SIN tool_calls (con route, findings, memory_writes, handoff).`,
+    });
+
+    // Si es la última iteración y todavía hay tool_calls, forzar cierre
+    if (iter === MAX_ITERATIONS) {
+      console.log('[runner] alcanzado MAX_ITERATIONS — forzando cierre');
+      messages.push({
+        role: 'user',
+        content: 'Límite de iteraciones alcanzado. Devuelve tu output final AHORA sin más tool_calls.',
+      });
+    }
   }
+
+  const toolResults = allToolResults;
+  console.log(`[runner] total tool_calls ejecutadas: ${toolResults.length}`);
 
   // Persistir memory_writes
   const writesResult = persistMemoryWrites(output.memory_writes || [], task, args.agent);

@@ -17,6 +17,7 @@ import { gate_check } from './gate_check.js';
 import { issue_comment } from './issue_comment.js';
 import { read_project_file } from './read_project_file.js';
 import { list_repo_files } from './list_repo_files.js';
+import { compare_inventories } from './compare_inventories.js';
 
 export const TOOLS = {
   file_read,
@@ -27,6 +28,7 @@ export const TOOLS = {
   issue_comment,
   read_project_file,
   list_repo_files,
+  compare_inventories,
 };
 
 export function getTool(name) {

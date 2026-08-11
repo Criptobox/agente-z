@@ -141,6 +141,35 @@
           <span class="nav__label">Memoria</span>
           <kbd class="nav__kbd">8</kbd>
         </button>
+
+        <div class="nav__divider"></div>
+
+        <button class="nav__item" data-target="chat">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </span>
+          <span class="nav__label">Chat</span>
+          <kbd class="nav__kbd">9</kbd>
+        </button>
+        <button class="nav__item" data-target="activity">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </span>
+          <span class="nav__label">Actividad</span>
+          <kbd class="nav__kbd">0</kbd>
+        </button>
+        <button class="nav__item" data-target="metrics">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          </span>
+          <span class="nav__label">Métricas</span>
+        </button>
+        <button class="nav__item" data-target="inventory">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          </span>
+          <span class="nav__label">Inventario</span>
+        </button>
       </nav>
 
       <div class="sidebar__footer">
@@ -369,6 +398,147 @@
             <span class="view__meta" id="memory-count">—</span>
           </div>
           <div class="card-list" id="memory-list"></div>
+        </section>
+
+        <!-- ═══ CHAT ═══ -->
+        <section class="view view--chat" id="view-chat">
+          <div class="chat">
+            <div class="chat__messages" id="chat-messages">
+              <div class="chat__empty">
+                <div class="chat__empty-icon">💬</div>
+                <h3 class="chat__empty-title">Habla con tu sistema</h3>
+                <p class="chat__empty-desc">Pregunta sobre tareas, memoria, presupuesto o lo que quieras saber sobre agent-brain.</p>
+                <div class="chat__suggestions">
+                  <button class="chat__suggestion" data-q="¿Qué tareas están stuck?">¿Qué tareas están stuck?</button>
+                  <button class="chat__suggestion" data-q="¿Qué aprendimos esta semana?">¿Qué aprendimos?</button>
+                  <button class="chat__suggestion" data-q="¿Cuánta cuota me queda hoy?">¿Cuánta cuota me queda?</button>
+                  <button class="chat__suggestion" data-q="Resume el último diario">Resume el diario</button>
+                </div>
+              </div>
+            </div>
+            <form class="chat__input-wrap" id="chat-form">
+              <input class="chat__input" type="text" id="chat-input" placeholder="Pregunta lo que quieras…" autocomplete="off">
+              <button class="chat__send" type="submit" id="chat-send" aria-label="Enviar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </form>
+          </div>
+        </section>
+
+        <!-- ═══ ACTIVITY ═══ -->
+        <section class="view" id="view-activity">
+          <div class="view__header">
+            <h2 class="view__title">Actividad</h2>
+            <span class="view__meta" id="activity-status">
+              <span class="pulse-dot" style="width:6px;height:6px;display:inline-block;vertical-align:middle"></span>
+              en vivo
+            </span>
+          </div>
+          <div class="card-list" id="activity-list">
+            <div class="empty"><div class="empty__icon">📡</div><div class="empty__text">cargando actividad…</div></div>
+          </div>
+        </section>
+
+        <!-- ═══ MÉTRICAS ═══ -->
+        <section class="view" id="view-metrics">
+          <div class="view__header">
+            <h2 class="view__title">Métricas</h2>
+            <span class="view__meta">tendencias del sistema</span>
+          </div>
+
+          <div class="grid-2">
+            <div class="panel">
+              <div class="panel__header"><h3 class="panel__title">Intentos hasta gate verde</h3></div>
+              <div class="panel__body">
+                <div class="metric-big" id="metric-attempts">—</div>
+                <div class="metric-label">promedio mensual</div>
+                <div class="metric-trend" id="metric-attempts-trend">—</div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel__header"><h3 class="panel__title">Tareas completadas</h3></div>
+              <div class="panel__body">
+                <div class="metric-big" id="metric-completed">—</div>
+                <div class="metric-label">total</div>
+                <div class="metric-trend" id="metric-completed-trend">—</div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel__header"><h3 class="panel__title">Tokens consumidos (7d)</h3></div>
+              <div class="panel__body">
+                <canvas id="chart-tokens" width="400" height="180"></canvas>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel__header"><h3 class="panel__title">Memoria por tipo</h3></div>
+              <div class="panel__body">
+                <canvas id="chart-memory" width="400" height="180"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" style="margin-top: var(--s-4)">
+            <div class="panel__header"><h3 class="panel__title">Métrica clave del spec</h3></div>
+            <div class="panel__body">
+              <p style="color: var(--text-secondary); font-size: 14px; line-height: 1.6; margin: 0">
+                <strong>Intentos promedio hasta el primer gate verde, por mes.</strong><br>
+                Si baja, el sistema está aprendiendo. Si no baja, las lecciones son decorativas.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══ INVENTARIO ═══ -->
+        <section class="view" id="view-inventory">
+          <div class="view__header">
+            <h2 class="view__title">📦 Inventario</h2>
+            <button class="btn btn--analyze" id="compare-inventory-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 12 12 5 19 12"/><line x1="12" y1="5" x2="12" y2="19"/></svg>
+              <span>Comparar ahora</span>
+            </button>
+          </div>
+
+          <!-- Setup card: configurar qué repos comparar -->
+          <div class="panel" id="inventory-setup" style="margin-bottom: var(--s-4)">
+            <div class="panel__header">
+              <h3 class="panel__title">⚙️ Configuración</h3>
+            </div>
+            <div class="panel__body">
+              <p style="color: var(--text-secondary); font-size: 13px; margin: 0 0 var(--s-4); line-height: 1.6">
+                Compara productos entre dos repos de GitHub. Detecta agotados, nuevos, desaparecidos y stock bajo.
+                Notifica automáticamente cada día a las 9 AM.
+              </p>
+              <div class="form-grid">
+                <div class="field">
+                  <label class="field__label">Repo A (referencia)</label>
+                  <input class="field__input" type="text" id="inv-repo-a" placeholder="axontech/axon-store" autocomplete="off">
+                  <p class="field__hint">Ej: <code>axontech/axon-store</code></p>
+                </div>
+                <div class="field">
+                  <label class="field__label">Repo B (a comparar)</label>
+                  <input class="field__input" type="text" id="inv-repo-b" placeholder="tiendamax/tiendamax-web" autocomplete="off">
+                  <p class="field__hint">Ej: <code>tiendamax/tiendamax-web</code></p>
+                </div>
+                <div class="field">
+                  <label class="field__label">Path productos A (opcional)</label>
+                  <input class="field__input" type="text" id="inv-path-a" placeholder="products.json" autocomplete="off">
+                  <p class="field__hint">Vacío = detección automática</p>
+                </div>
+                <div class="field">
+                  <label class="field__label">Path productos B (opcional)</label>
+                  <input class="field__input" type="text" id="inv-path-b" placeholder="data/products.json" autocomplete="off">
+                  <p class="field__hint">Vacío = detección automática</p>
+                </div>
+              </div>
+              <div class="info-banner" style="margin-top: var(--s-4)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span>Para automatizar el diario, configura también las variables <code>INVENTORY_REPO_A</code> y <code>INVENTORY_REPO_B</code> en Settings → Actions → Variables.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Resultado de comparación -->
+          <div id="inventory-result"></div>
         </section>
 
       </div>

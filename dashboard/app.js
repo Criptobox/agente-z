@@ -69,6 +69,8 @@ const DEMO = {
     { name: 'budget', icon: '💰', role: 'Vigila cuota de tokens', turns: 24, status: 'active' },
     { name: 'diarist', icon: '📅', role: 'Diario nocturno', turns: 7, status: 'idle' },
     { name: 'self_improver', icon: '🤖', role: 'Auto-mejora por PR', turns: 2, status: 'idle' },
+    { name: 'inventory', icon: '📦', role: 'Compara inventarios entre repos', turns: 3, status: 'active' },
+    { name: 'chat', icon: '💬', role: 'Interfaz conversacional', turns: 15, status: 'active' },
   ],
 };
 
@@ -169,6 +171,8 @@ const state = {
   currentView: 'overview',
   filters: { tasks: 'all', errors: 'all', lessons: 'all' },
   data: null,
+  chatHistory: [],
+  activityPollInterval: null,
 };
 
 // ─── Toast ───
@@ -200,8 +204,12 @@ function switchView(name) {
     lessons: ['Lecciones', 'Aprendizajes activas'],
     diary: ['Diario', 'Resumen nocturno auto-generado'],
     budget: ['Presupuesto', 'Cuota diaria de tokens y minutos'],
-    agents: ['Agentes', '10 agentes especializados'],
+    agents: ['Agentes', '12 agentes especializados'],
     memory: ['Memoria', 'Todos los registros'],
+    chat: ['Chat', 'Habla con tu sistema'],
+    activity: ['Actividad', 'Feed en tiempo real'],
+    metrics: ['Métricas', 'Tendencias del sistema'],
+    inventory: ['Inventario', 'Compara productos entre repos'],
   };
   const [title, sub] = titles[name] || [name, ''];
   $('#view-title').textContent = title;
@@ -596,6 +604,8 @@ function renderAll() {
   renderBudget();
   renderAgents();
   renderMemory();
+  renderActivity();
+  renderMetrics();
 }
 
 // ─── Command palette ───
@@ -900,6 +910,45 @@ function attachEvents() {
     });
   });
 
+  // ─── Chat ───
+  const chatForm = $('#chat-form');
+  const chatInput = $('#chat-input');
+  chatForm?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const q = chatInput.value.trim();
+    if (q) sendChatMessage(q);
+  });
+  // Sugerencias
+  $$('.chat__suggestion').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const q = btn.dataset.q;
+      chatInput.value = q;
+      sendChatMessage(q);
+    });
+  });
+
+  // ─── Inventory ───
+  // Cargar valores guardados
+  const savedRepoA = localStorage.getItem('inv-repo-a');
+  const savedRepoB = localStorage.getItem('inv-repo-b');
+  if (savedRepoA) $('#inv-repo-a').value = savedRepoA;
+  if (savedRepoB) $('#inv-repo-b').value = savedRepoB;
+
+  $('#compare-inventory-btn')?.addEventListener('click', () => {
+    const repoA = $('#inv-repo-a').value.trim();
+    const repoB = $('#inv-repo-b').value.trim();
+    const pathA = $('#inv-path-a').value.trim();
+    const pathB = $('#inv-path-b').value.trim();
+    if (!repoA || !repoB) {
+      toast('Especifica los dos repos a comparar', '⚠️');
+      return;
+    }
+    // Guardar para próxima vez
+    localStorage.setItem('inv-repo-a', repoA);
+    localStorage.setItem('inv-repo-b', repoB);
+    compareInventoriesNow(repoA, repoB, pathA, pathB);
+  });
+
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     // Cmd/Ctrl + K → command palette
@@ -938,7 +987,7 @@ function attachEvents() {
     }
     // Number keys → view switch (only when not in input)
     if (document.activeElement.tagName !== 'INPUT' && !e.metaKey && !e.ctrlKey) {
-      const numMap = { '1': 'overview', '2': 'tasks', '3': 'errors', '4': 'lessons', '5': 'diary', '6': 'budget', '7': 'agents', '8': 'memory' };
+      const numMap = { '1': 'overview', '2': 'tasks', '3': 'errors', '4': 'lessons', '5': 'diary', '6': 'budget', '7': 'agents', '8': 'memory', '9': 'chat', '0': 'activity' };
       if (numMap[e.key]) {
         e.preventDefault();
         switchView(numMap[e.key]);
@@ -1114,6 +1163,676 @@ async function loadAll() {
   renderAll();
 }
 
+// ─── Chat ───
+function addChatMessage(role, content) {
+  const messages = $('#chat-messages');
+  // Quitar empty state si existe
+  const empty = messages.querySelector('.chat__empty');
+  if (empty) empty.remove();
+
+  const msg = document.createElement('div');
+  msg.className = `chat__msg chat__msg--${role}`;
+  const avatar = role === 'user' ? '🧑' : '🤖';
+  msg.innerHTML = `
+    <div class="chat__msg-avatar">${avatar}</div>
+    <div class="chat__msg-body">${escapeHtml(content).replace(/\n/g, '<br>')}</div>
+  `;
+  messages.appendChild(msg);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function addTypingIndicator() {
+  const messages = $('#chat-messages');
+  const empty = messages.querySelector('.chat__empty');
+  if (empty) empty.remove();
+  const msg = document.createElement('div');
+  msg.className = 'chat__msg chat__msg--typing';
+  msg.id = 'typing-indicator';
+  msg.innerHTML = `
+    <div class="chat__msg-avatar">🤖</div>
+    <div class="chat__msg-body"></div>
+  `;
+  messages.appendChild(msg);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function removeTypingIndicator() {
+  const typing = $('#typing-indicator');
+  if (typing) typing.remove();
+}
+
+async function sendChatMessage(question) {
+  if (!question.trim()) return;
+  addChatMessage('user', question);
+  state.chatHistory.push({ role: 'user', content: question });
+  $('#chat-input').value = '';
+  $('#chat-send').disabled = true;
+  addTypingIndicator();
+
+  try {
+    // En modo demo, simular respuesta
+    if (DEMO_MODE) {
+      await new Promise(r => setTimeout(r, 1200));
+      removeTypingIndicator();
+      const demoAnswer = getDemoChatAnswer(question);
+      addChatMessage('assistant', demoAnswer);
+      state.chatHistory.push({ role: 'assistant', content: demoAnswer });
+    } else {
+      // En producción, llamar al workflow chat.yml vía repository_dispatch
+      const token = localStorage.getItem('agent-brain-pat') || state.token;
+      const repo = state.repo || localStorage.getItem('agent-brain-repo');
+      if (!token || !repo) {
+        removeTypingIndicator();
+        addChatMessage('assistant', '⚠️ Para usar el chat necesitas configurar tu PAT de GitHub. Ábrelo desde `setup.html` primero.');
+        return;
+      }
+      const res = await fetch(`https://api.github.com/repos/${repo}/dispatches`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          event_type: 'chat',
+          client_payload: { question, history: JSON.stringify(state.chatHistory.slice(-6)) },
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      removeTypingIndicator();
+      addChatMessage('assistant', '✓ Tu pregunta fue enviada al agente `chat`. La respuesta aparecerá como comentario en el último Issue abierto del repo (o créalo con label `chat`). Tarda ~30s en llegar.');
+    }
+  } catch (err) {
+    removeTypingIndicator();
+    addChatMessage('assistant', `❌ Error: ${err.message}`);
+  } finally {
+    $('#chat-send').disabled = false;
+    $('#chat-input').focus();
+  }
+}
+
+function getDemoChatAnswer(question) {
+  const q = question.toLowerCase();
+  if (q.includes('stuck') || q.includes('atascada')) {
+    return `Tienes **1 tarea stuck**:\n\n• **TASK-0041** — Refactorizar calculateTotal para usar reduce puro\n  Intento 5/5. Último gate fallido: G3 (total numéricamente incorrecto).\n  Hipótesis viva: el carrito se rehidrata desde localStorage con esquema antiguo.\n\n¿Quieres que cree una tarea para que \`research\` investigue?`;
+  }
+  if (q.includes('cuota') || q.includes('budget') || q.includes('presupuesto')) {
+    return `📊 **Budget de hoy:**\n\n• Tokens: 45,000 / 120,000 (38%)\n• Minutos de Actions: 12 / 180 (7%)\n• Estado: ✅ OK\n\nTe quedan ~75k tokens para hoy. Vas bien.`;
+  }
+  if (q.includes('diario') || q.includes('resumen')) {
+    return `📅 **Último diario (${new Date().toISOString().slice(0,10)}):**\n\n"Arreglado bug del carrito (TASK-0042). 1 lección nueva sobre NaN."\n\n• TASK-0042 cerrada con éxito tras 2 intentos\n• Devil bloqueó inicialmente por falta de gate G3\n• Lessons activas: 6\n• Sin tareas STUCK\n\n**Pendiente para mañana:** revisar si el mismo bug existe en checkout.js`;
+  }
+  if (q.includes('aprend') || q.includes('lección') || q.includes('leccion')) {
+    return `💡 **Lecciones activas (6 total):**\n\n1. **LESSON-0014** — NaN en cálculos suele ser integridad referencial (aplicada 4 veces, previno 3 fallos)\n2. **LESSON-0021** — Safari no persiste localStorage en modo privado (2/2)\n3. **LESSON-0029** — Errores de auth suelen ser del redirect (5/4) ✅ promovida a regla\n4. **LESSON-0033** — WebSocket timeout suele ser keepAlive (3/3)\n\nLESSON-0029 fue promovida a regla en \`agents/research.md\`.`;
+  }
+  return `No encontré información específica sobre eso. Prueba preguntando:\n\n• "¿Qué tareas están stuck?"\n• "¿Cuánta cuota me queda?"\n• "¿Qué aprendimos?"\n• "Resume el diario"`;
+}
+
+// ─── Activity feed ───
+function renderActivity() {
+  const list = $('#activity-list');
+  // Construir feed a partir de episodios + memorias recientes
+  const items = [];
+
+  // Episodios (intentos de agentes)
+  const episodes = Object.entries(state.data?.index || {})
+    .filter(([id, m]) => m.type === 'episode')
+    .map(([id, m]) => ({
+      id,
+      type: 'episode',
+      icon: '⚙️',
+      title: `Agente <code>${m.agent || '?'}</code> — intento ${m.attempt} de ${m.task_id || '?'}`,
+      meta: `ruta: ${m.result || '?'}`,
+      time: m.created,
+    }));
+
+  // Errores nuevos
+  const errors = Object.entries(state.data?.index || {})
+    .filter(([id, m]) => m.type === 'error')
+    .map(([id, m]) => ({
+      id,
+      type: 'error',
+      icon: '🐞',
+      title: `Error registrado: <code>${id}</code> — ${m.title || '(sin título)'}`,
+      meta: `confidence: ${m.confidence} · ${m.stale ? '⚠ stale' : 'ok'}`,
+      time: m.created || m.updated,
+    }));
+
+  // Lecciones
+  const lessons = Object.entries(state.data?.index || {})
+    .filter(([id, m]) => m.type === 'lesson')
+    .map(([id, m]) => ({
+      id,
+      type: 'lesson',
+      icon: '💡',
+      title: `Lección propuesta: <code>${id}</code> — ${m.title || ''}`,
+      meta: `previno ${m.times_prevented_failure || 0} fallos`,
+      time: m.created,
+    }));
+
+  // Decisions
+  const decisions = Object.entries(state.data?.index || {})
+    .filter(([id, m]) => m.type === 'decision')
+    .map(([id, m]) => ({
+      id,
+      type: 'decision',
+      icon: '📋',
+      title: `Decisión: <code>${id}</code> — ${m.title || ''}`,
+      meta: `scope: ${m.scope || '?'}`,
+      time: m.created,
+    }));
+
+  items.push(...episodes, ...errors, ...lessons, ...decisions);
+
+  // Si no hay datos reales, mostrar demo
+  if (!items.length && DEMO_MODE) {
+    items.push(
+      { id: 'demo1', type: 'episode', icon: '✅', title: 'TASK-0042 cerrada con éxito por <code>code</code>', meta: '2 intentos · 1 lección aplicada', time: new Date(Date.now() - 5 * 60 * 1000).toISOString() },
+      { id: 'demo2', type: 'episode', icon: '😈', title: 'Devil bloqueó TASK-0042 — falta gate G3', meta: 'concern: missing_gate · severity: high', time: new Date(Date.now() - 8 * 60 * 1000).toISOString() },
+      { id: 'demo3', type: 'lesson', icon: '💡', title: 'Lección propuesta: LESSON-0014', meta: 'NaN en cálculos suele ser integridad referencial', time: new Date(Date.now() - 15 * 60 * 1000).toISOString() },
+      { id: 'demo4', type: 'episode', icon: '🔍', title: 'Analyst auditó repo Criptobox/agente-z', meta: '5 hallazgos · 2 high · 3 medium', time: new Date(Date.now() - 32 * 60 * 1000).toISOString() },
+      { id: 'demo5', type: 'decision', icon: '📋', title: 'Decisión DEC-0003: GitHub Actions como runtime', meta: 'confidence: 100 · scope: general', time: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
+      { id: 'demo6', type: 'episode', icon: '💰', title: 'Budget agent: 38% tokens usados', meta: 'kind: OK · 23 llamadas', time: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() },
+    );
+  }
+
+  // Ordenar por tiempo desc
+  items.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
+
+  if (!items.length) {
+    list.innerHTML = '<div class="empty"><div class="empty__icon">📡</div><div class="empty__text">sin actividad todavía</div></div>';
+    return;
+  }
+
+  list.innerHTML = items.slice(0, 30).map(item => {
+    const timeStr = formatRelativeTime(item.time);
+    return `
+      <div class="activity-item">
+        <div class="activity-item__icon">${item.icon}</div>
+        <div class="activity-item__body">
+          <div class="activity-item__title">${item.title}</div>
+          <div class="activity-item__meta">${item.meta}</div>
+        </div>
+        <div class="activity-item__time">${timeStr}</div>
+      </div>`;
+  }).join('');
+}
+
+function formatRelativeTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'ahora';
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  const day = Math.floor(hr / 24);
+  return `${day}d`;
+}
+
+// ─── Metrics ───
+function renderMetrics() {
+  const stats = state.data?.stats;
+  if (!stats) {
+    $('#metric-attempts').textContent = '—';
+    $('#metric-completed').textContent = '—';
+    return;
+  }
+
+  // Calcular intentos promedio (de episodios)
+  const episodes = Object.values(state.data?.index || {}).filter(m => m.type === 'episode');
+  const completedTasks = (state.data?.tasks || []).filter(t => t.status === 'completed');
+
+  if (DEMO_MODE || !episodes.length) {
+    $('#metric-attempts').textContent = '2.1';
+    $('#metric-attempts-trend').textContent = '↓ 35% vs mes anterior';
+    $('#metric-attempts-trend').className = 'metric-trend';
+  } else {
+    const avg = episodes.length / Math.max(completedTasks.length, 1);
+    $('#metric-attempts').textContent = avg.toFixed(1);
+    $('#metric-attempts-trend').textContent = '— sin histórico aún';
+  }
+
+  $('#metric-completed').textContent = completedTasks.length || (DEMO_MODE ? 12 : 0);
+  $('#metric-completed-trend').textContent = DEMO_MODE ? '↑ 3 esta semana' : '—';
+  $('#metric-completed-trend').className = 'metric-trend';
+
+  // Chart de tokens (7d) — usar canvas simple
+  drawTokensChart();
+  drawMemoryChart();
+}
+
+function drawTokensChart() {
+  const canvas = $('#chart-tokens');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const data = state.data?.budget?.history || [25, 38, 42, 28, 55, 48, 38];
+  const max = Math.max(...data, 100);
+  const barW = (W - 40) / data.length;
+
+  // Grid lines
+  ctx.strokeStyle = 'rgba(125, 133, 144, 0.1)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = 20 + (H - 40) * (i / 4);
+    ctx.beginPath();
+    ctx.moveTo(20, y);
+    ctx.lineTo(W - 20, y);
+    ctx.stroke();
+  }
+
+  // Bars
+  data.forEach((v, i) => {
+    const x = 20 + i * barW + 4;
+    const h = ((H - 40) * v) / max;
+    const y = H - 20 - h;
+    const gradient = ctx.createLinearGradient(0, y, 0, H - 20);
+    gradient.addColorStop(0, '#6366f1');
+    gradient.addColorStop(1, '#a855f7');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x, y, barW - 8, h);
+  });
+}
+
+function drawMemoryChart() {
+  const canvas = $('#chart-memory');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const stats = state.data?.stats || DEMO.stats;
+  const types = [
+    { label: 'error', count: stats.byType?.error || 0, color: '#ef4444' },
+    { label: 'decision', count: stats.byType?.decision || 0, color: '#3b82f6' },
+    { label: 'fact', count: stats.byType?.fact || 0, color: '#6366f1' },
+    { label: 'lesson', count: stats.byType?.lesson || 0, color: '#a855f7' },
+    { label: 'criteria', count: stats.byType?.criteria || 0, color: '#14b8a6' },
+    { label: 'episode', count: stats.byType?.episode || 0, color: '#f59e0b' },
+  ];
+
+  const total = types.reduce((s, t) => s + t.count, 0) || 1;
+  const cx = W / 2, cy = H / 2;
+  const r = Math.min(W, H) / 2 - 20;
+  let startAngle = -Math.PI / 2;
+
+  types.forEach(t => {
+    if (t.count === 0) return;
+    const angle = (t.count / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, startAngle, startAngle + angle);
+    ctx.closePath();
+    ctx.fillStyle = t.color;
+    ctx.fill();
+    startAngle += angle;
+  });
+
+  // Hole in middle (donut)
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.6, 0, Math.PI * 2);
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-elev-1').trim() || '#11141b';
+  ctx.fill();
+
+  // Total in center
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#e8ebf0';
+  ctx.font = 'bold 24px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(total, cx, cy);
+}
+
+// ─── Auto-polling (cada 30s cuando hay actividad) ───
+function startAutoPoll() {
+  if (state.activityPollInterval) clearInterval(state.activityPollInterval);
+  state.activityPollInterval = setInterval(async () => {
+    // Solo pollear si no estamos en chat y la pestaña está activa
+    if (document.hidden || state.currentView === 'chat') return;
+    try {
+      const oldCount = Object.keys(state.data?.index || {}).length;
+      await loadAll();
+      const newCount = Object.keys(state.data?.index || {}).length;
+      if (newCount > oldCount) {
+        toast(`Nuevos eventos en el sistema (+${newCount - oldCount})`, '📡');
+      }
+    } catch (err) {
+      // Silencioso — no romper la UX por un fallo de poll
+    }
+  }, 30000); // 30s
+}
+
+// ─── Inventory comparison (runs client-side via GitHub API) ───
+const INVENTORY_PATTERNS = [
+  'products.json', 'inventory.json', 'data/products.json', 'data/inventory.json',
+  'src/data/products.json', 'src/data/inventory.json', 'public/products.json',
+  'api/products.json', 'catalog.json', 'items.json', 'stock.json',
+];
+
+function detectIdField(p) {
+  if (!p) return 'id';
+  for (const k of ['id', 'sku', '_id', 'productId', 'product_id', 'slug', 'name']) {
+    if (p[k] != null) return k;
+  }
+  return 'id';
+}
+function detectStockField(p) {
+  if (!p) return null;
+  for (const k of ['stock', 'quantity', 'qty', 'available', 'inventory', 'count', 'units']) {
+    if (p[k] != null) return k;
+  }
+  return null;
+}
+function detectNameField(p) {
+  if (!p) return 'name';
+  for (const k of ['name', 'nombre', 'title', 'titulo', 'label']) {
+    if (p[k] != null) return k;
+  }
+  return 'name';
+}
+function detectPriceField(p) {
+  if (!p) return null;
+  for (const k of ['price', 'precio', 'cost', 'amount', 'value']) {
+    if (p[k] != null) return k;
+  }
+  return null;
+}
+
+function parseInventory(raw, filename) {
+  if (!raw) return [];
+  try {
+    const d = JSON.parse(raw);
+    if (Array.isArray(d)) return d;
+    if (Array.isArray(d.products)) return d.products;
+    if (Array.isArray(d.items)) return d.items;
+    if (Array.isArray(d.data)) return d.data;
+    if (d && typeof d === 'object') return Object.values(d).filter(v => typeof v === 'object');
+  } catch {}
+  // JS export
+  const m = raw.match(/(?:export\s+default|module\.exports\s*=|export\s+const\s+\w+\s*=)\s*(\[[\s\S]*\])/);
+  if (m) {
+    try {
+      const arr = m[1].replace(/'/g, '"').replace(/,(\s*[}\]])/g, '$1').replace(/(\w+):/g, '"$1":');
+      return JSON.parse(arr);
+    } catch {}
+  }
+  return [];
+}
+
+async function fetchRepoFileClient(repo, path, token) {
+  const headers = { 'Accept': 'application/vnd.github+json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, { headers });
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (data.type !== 'file' || !data.content) return null;
+  return {
+    content: atob(data.content.replace(/\n/g, '')),
+    path: data.path,
+    sha: data.sha,
+  };
+}
+
+async function findInventoryFileClient(repo, token) {
+  for (const pattern of INVENTORY_PATTERNS) {
+    const f = await fetchRepoFileClient(repo, pattern, token);
+    if (f) return f;
+  }
+  // Listar raíz
+  const headers = { 'Accept': 'application/vnd.github+json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repo}/contents/`, { headers });
+    if (res.ok) {
+      const items = await res.json();
+      for (const item of items) {
+        if (item.type === 'file' && /product|inventory|catalog|items?|stock/i.test(item.name)) {
+          const f = await fetchRepoFileClient(repo, item.path, token);
+          if (f) return f;
+        }
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function diffInventoriesClient(productsA, productsB, labelA, labelB) {
+  const sampleA = productsA[0] || {};
+  const sampleB = productsB[0] || {};
+  const idField = detectIdField(sampleA) || detectIdField(sampleB);
+  const stockField = detectStockField(sampleA) || detectStockField(sampleB);
+  const nameField = detectNameField(sampleA) || detectNameField(sampleB);
+  const priceField = detectPriceField(sampleA) || detectPriceField(sampleB);
+
+  const indexA = new Map();
+  for (const p of productsA) {
+    const id = p[idField];
+    if (id != null) indexA.set(String(id), p);
+  }
+  const indexB = new Map();
+  for (const p of productsB) {
+    const id = p[idField];
+    if (id != null) indexB.set(String(id), p);
+  }
+
+  const idsA = new Set(indexA.keys());
+  const idsB = new Set(indexB.keys());
+
+  const agotados = [];
+  const nuevos = [];
+  const desaparecidos = [];
+  const disponibles = [];
+  const stockBajo = [];
+
+  for (const id of idsB) {
+    const pB = indexB.get(id);
+    const stockB = stockField ? Number(pB[stockField]) || 0 : null;
+    if (!idsA.has(id)) {
+      nuevos.push({ id, name: pB[nameField] || id, stock: stockB, price: priceField ? pB[priceField] : null });
+    } else {
+      const pA = indexA.get(id);
+      const stockA = stockField ? Number(pA[stockField]) || 0 : null;
+      if (stockB === 0 && stockA > 0) {
+        agotados.push({ id, name: pB[nameField] || id, stockAgo: stockA, stockNow: 0, price: priceField ? pB[priceField] : null });
+      } else if (stockB > 0 && stockB < 5) {
+        stockBajo.push({ id, name: pB[nameField] || id, stock: stockB, price: priceField ? pB[priceField] : null });
+      } else if (stockB > 0) {
+        disponibles.push({ id, name: pB[nameField] || id, stock: stockB, price: priceField ? pB[priceField] : null });
+      }
+    }
+  }
+  for (const id of idsA) {
+    if (!idsB.has(id)) {
+      const pA = indexA.get(id);
+      desaparecidos.push({ id, name: pA[nameField] || id, stockAgo: stockField ? Number(pA[stockField]) || 0 : null });
+    }
+  }
+
+  return {
+    labelA, labelB,
+    fields: { id: idField, stock: stockField, name: nameField, price: priceField },
+    totalA: productsA.length,
+    totalB: productsB.length,
+    agotados, nuevos, desaparecidos, disponibles, stockBajo,
+    summary: {
+      total: productsB.length,
+      agotados: agotados.length,
+      nuevos: nuevos.length,
+      desaparecidos: desaparecidos.length,
+      disponibles: disponibles.length,
+      stockBajo: stockBajo.length,
+    },
+  };
+}
+
+async function compareInventoriesNow(repoA, repoB, pathA, pathB) {
+  const token = localStorage.getItem('agent-brain-pat') || state.token || '';
+  const el = $('#inventory-result');
+  el.innerHTML = '<div class="inv-loading">Comparando inventarios…</div>';
+
+  try {
+    let fileA, fileB;
+    if (pathA) {
+      fileA = await fetchRepoFileClient(repoA, pathA, token);
+    } else {
+      fileA = await findInventoryFileClient(repoA, token);
+    }
+    if (pathB) {
+      fileB = await fetchRepoFileClient(repoB, pathB, token);
+    } else {
+      fileB = await findInventoryFileClient(repoB, token);
+    }
+
+    if (!fileA) {
+      el.innerHTML = `<div class="inv-empty"><div class="inv-empty__icon">❌</div><div class="inv-empty__text">No se encontró archivo de productos en <code>${escapeHtml(repoA)}</code>.<br>Especifica el path manualmente arriba.</div></div>`;
+      return;
+    }
+    if (!fileB) {
+      el.innerHTML = `<div class="inv-empty"><div class="inv-empty__icon">❌</div><div class="inv-empty__text">No se encontró archivo de productos en <code>${escapeHtml(repoB)}</code>.<br>Especifica el path manualmente arriba.</div></div>`;
+      return;
+    }
+
+    const productsA = parseInventory(fileA.content, fileA.path);
+    const productsB = parseInventory(fileB.content, fileB.path);
+
+    if (!productsA.length || !productsB.length) {
+      el.innerHTML = `<div class="inv-empty"><div class="inv-empty__icon">⚠️</div><div class="inv-empty__text">No se pudieron parsear productos.<br><code>${escapeHtml(fileA.path)}</code>: ${productsA.length} items<br><code>${escapeHtml(fileB.path)}</code>: ${productsB.length} items</div></div>`;
+      return;
+    }
+
+    const report = diffInventoriesClient(productsA, productsB, repoA, repoB);
+    report.fileA = fileA.path;
+    report.fileB = fileB.path;
+    renderInventoryReport(report);
+  } catch (err) {
+    el.innerHTML = `<div class="inv-empty"><div class="inv-empty__icon">❌</div><div class="inv-empty__text">Error: ${escapeHtml(err.message)}</div></div>`;
+  }
+}
+
+function renderInventoryReport(report) {
+  const el = $('#inventory-result');
+  const s = report.summary;
+  const fmtPrice = (p) => p != null ? `$${Number(p).toFixed(2)}` : '';
+
+  const kpis = [
+    { value: s.total, label: 'total productos', cls: '' },
+    { value: s.agotados, label: 'agotados', cls: s.agotados > 0 ? 'inv-kpi--danger' : 'inv-kpi--success' },
+    { value: s.nuevos, label: 'nuevos', cls: s.nuevos > 0 ? 'inv-kpi--success' : '' },
+    { value: s.stockBajo, label: 'stock bajo', cls: s.stockBajo > 0 ? 'inv-kpi--warning' : '' },
+    { value: s.desaparecidos, label: 'desaparecidos', cls: s.desaparecidos > 0 ? 'inv-kpi--warning' : '' },
+    { value: s.disponibles, label: 'disponibles', cls: 'inv-kpi--success' },
+  ];
+
+  const agotadosTable = report.agotados.length ? `
+    <div class="inv-section inv-section--danger">
+      <div class="inv-section__header">
+        <h3 class="inv-section__title">🔴 Agotados (stock = 0)</h3>
+        <span class="inv-section__count">${report.agotados.length}</span>
+      </div>
+      <table class="inv-table">
+        <thead><tr><th>ID</th><th>Nombre</th><th>Stock antes</th><th>Stock ahora</th><th>Precio</th></tr></thead>
+        <tbody>
+          ${report.agotados.slice(0, 50).map(p => `
+            <tr>
+              <td>${escapeHtml(p.id)}</td>
+              <td>${escapeHtml(p.name)}</td>
+              <td class="inv-diff inv-diff--down">${p.stockAgo}</td>
+              <td class="inv-stock inv-stock--zero">0</td>
+              <td class="inv-price">${fmtPrice(p.price)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>` : '';
+
+  const nuevosTable = report.nuevos.length ? `
+    <div class="inv-section inv-section--success">
+      <div class="inv-section__header">
+        <h3 class="inv-section__title">✨ Nuevos en ${escapeHtml(report.labelB)}</h3>
+        <span class="inv-section__count">${report.nuevos.length}</span>
+      </div>
+      <table class="inv-table">
+        <thead><tr><th>ID</th><th>Nombre</th><th>Stock</th><th>Precio</th></tr></thead>
+        <tbody>
+          ${report.nuevos.slice(0, 50).map(p => `
+            <tr>
+              <td>${escapeHtml(p.id)}</td>
+              <td>${escapeHtml(p.name)}</td>
+              <td class="inv-stock inv-stock--ok">${p.stock ?? '—'}</td>
+              <td class="inv-price">${fmtPrice(p.price)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>` : '';
+
+  const stockBajoTable = report.stockBajo.length ? `
+    <div class="inv-section inv-section--warning">
+      <div class="inv-section__header">
+        <h3 class="inv-section__title">⚠️ Stock bajo (&lt; 5 unidades)</h3>
+        <span class="inv-section__count">${report.stockBajo.length}</span>
+      </div>
+      <table class="inv-table">
+        <thead><tr><th>ID</th><th>Nombre</th><th>Stock</th><th>Precio</th></tr></thead>
+        <tbody>
+          ${report.stockBajo.slice(0, 30).map(p => `
+            <tr>
+              <td>${escapeHtml(p.id)}</td>
+              <td>${escapeHtml(p.name)}</td>
+              <td class="inv-stock inv-stock--low">${p.stock}</td>
+              <td class="inv-price">${fmtPrice(p.price)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>` : '';
+
+  const desaparecidosTable = report.desaparecidos.length ? `
+    <div class="inv-section">
+      <div class="inv-section__header">
+        <h3 class="inv-section__title">❌ Desaparecidos (estaban en A, no en B)</h3>
+        <span class="inv-section__count">${report.desaparecidos.length}</span>
+      </div>
+      <table class="inv-table">
+        <thead><tr><th>ID</th><th>Nombre</th><th>Stock antes</th></tr></thead>
+        <tbody>
+          ${report.desaparecidos.slice(0, 30).map(p => `
+            <tr>
+              <td>${escapeHtml(p.id)}</td>
+              <td>${escapeHtml(p.name)}</td>
+              <td class="inv-diff">${p.stockAgo ?? '—'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>` : '';
+
+  const noChanges = (!report.agotados.length && !report.nuevos.length && !report.stockBajo.length && !report.desaparecidos.length) ? `
+    <div class="inv-section">
+      <div class="inv-section__header">
+        <h3 class="inv-section__title">✅ Sin cambios</h3>
+      </div>
+      <div class="inv-empty">
+        <div class="inv-empty__icon">✅</div>
+        <div class="inv-empty__text">Todo el inventario está disponible y sin novedades.</div>
+      </div>
+    </div>` : '';
+
+  el.innerHTML = `
+    <div class="info-banner" style="margin-bottom: var(--s-4)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <span><strong>${escapeHtml(report.labelA)}</strong> (${report.totalA} productos) vs <strong>${escapeHtml(report.labelB)}</strong> (${report.totalB} productos) · Archivos: <code>${escapeHtml(report.fileA)}</code> / <code>${escapeHtml(report.fileB)}</code> · Campos: id=<code>${escapeHtml(report.fields.id)}</code>, stock=<code>${escapeHtml(report.fields.stock || '?')}</code></span>
+    </div>
+    <div class="inv-kpi-grid">
+      ${kpis.map(k => `<div class="inv-kpi ${k.cls}"><div class="inv-kpi__value">${k.value}</div><div class="inv-kpi__label">${k.label}</div></div>`).join('')}
+    </div>
+    ${agotadosTable}${nuevosTable}${stockBajoTable}${desaparecidosTable}${noChanges}
+  `;
+}
+
 // ─── Init ───
 async function init() {
   loadTheme();
@@ -1121,6 +1840,7 @@ async function init() {
   startClock();
   registerSW();
   await loadAll();
+  startAutoPoll();
 }
 
 init().catch(err => {
