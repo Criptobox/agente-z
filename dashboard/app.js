@@ -86,6 +86,21 @@ function buildDemoIndex() {
 }
 DEMO.index = buildDemoIndex();
 
+// ─── Data path resolver ───
+// En producción (GitHub Pages): los datos están en ./data/memory/ y ./data/tasks/
+// En local (file:// o dev server): están en ../memory/ y ../tasks/
+function dataPath(relativePath) {
+  // Si la URL es github.io o similar (producción), usar ./data/...
+  const isProduction = location.hostname.endsWith('github.io') ||
+                       location.hostname.includes('githubusercontent.com') ||
+                       params.get('prod') === '1';
+  if (isProduction) {
+    return './data/' + relativePath;
+  }
+  // Local: relativo al dashboard/
+  return '../' + relativePath;
+}
+
 // ─── Helpers ───
 function escapeHtml(t) {
   if (t == null) return '';
@@ -879,8 +894,8 @@ async function loadAll() {
     return;
   }
   const [stats, index] = await Promise.all([
-    fetchJson('../memory/stats.json'),
-    fetchJson('../memory/index.json'),
+    fetchJson(dataPath('memory/stats.json')),
+    fetchJson(dataPath('memory/index.json')),
   ]);
   state.data = {
     stats,
@@ -890,21 +905,21 @@ async function loadAll() {
     budget: null,
   };
   // Tasks
-  const tasksIdx = await fetchJson('../tasks/index.json');
+  const tasksIdx = await fetchJson(dataPath('tasks/index.json'));
   const taskIds = (tasksIdx?.tasks || [{ id: 'TASK-0001' }]).slice(0, 20).map(t => t.id);
-  state.data.tasks = (await Promise.all(taskIds.map(id => fetchJson(`../tasks/${id}.json`)))).filter(Boolean);
+  state.data.tasks = (await Promise.all(taskIds.map(id => fetchJson(dataPath(`tasks/${id}.json`))))).filter(Boolean);
   // Diary
-  const diaryIdx = await fetchJson('../memory/diary/index.json');
+  const diaryIdx = await fetchJson(dataPath('memory/diary/index.json'));
   if (diaryIdx?.entries?.length) {
     const last = diaryIdx.entries[diaryIdx.entries.length - 1];
-    const raw = await fetchText(`../memory/diary/${last.file}`);
+    const raw = await fetchText(dataPath(`memory/diary/${last.file}`));
     if (raw) state.data.diary = parseFrontmatter(raw).data;
   }
   // Budget
-  const budgetIdx = await fetchJson('../memory/budget/index.json');
+  const budgetIdx = await fetchJson(dataPath('memory/budget/index.json'));
   if (budgetIdx?.entries?.length) {
     const last = budgetIdx.entries[budgetIdx.entries.length - 1];
-    const raw = await fetchText(`../memory/budget/${last.file}`);
+    const raw = await fetchText(dataPath(`memory/budget/${last.file}`));
     if (raw) state.data.budget = parseFrontmatter(raw).data;
   }
   renderAll();

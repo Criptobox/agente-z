@@ -9,7 +9,7 @@
 //   4. Archivar lecciones sin uso (times_applied == 0 y > 60 días).
 //   5. Reportar métricas al dashboard.
 
-import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { config, restApiHeaders } from './config.js';
 import {
@@ -197,7 +197,78 @@ async function main() {
   // 5. Métricas
   reportMetrics();
 
+  // 6. Generar índices adicionales para el dashboard (diary, budget, tasks)
+  generateDashboardIndexes();
+
   console.log('[reindex] fin');
+}
+
+// ── Genera memory/diary/index.json, memory/budget/index.json, tasks/index.json ──
+// El dashboard los necesita para encontrar el último archivo de cada tipo.
+function generateDashboardIndexes() {
+  // diary/index.json
+  try {
+    const diaryDir = resolve(config.root, config.paths.memory, 'diary');
+    const diaryEntries = readdirSync(diaryDir)
+      .filter(f => f.endsWith('.md') && f !== '_template.md')
+      .map(f => {
+        const full = join(diaryDir, f);
+        const stat = statSync(full);
+        return { file: f, mtime: stat.mtime.getTime() };
+      })
+      .sort((a, b) => a.mtime - b.mtime);
+    writeFileSync(
+      join(diaryDir, 'index.json'),
+      JSON.stringify({ entries: diaryEntries }, null, 2) + '\n',
+      'utf8'
+    );
+    console.log(`[reindex] diary/index.json: ${diaryEntries.length} entradas`);
+  } catch (err) {
+    console.log('[reindex] diary/index.json omitido:', err.message);
+  }
+
+  // budget/index.json
+  try {
+    const budgetDir = resolve(config.root, config.paths.memory, 'budget');
+    const budgetEntries = readdirSync(budgetDir)
+      .filter(f => f.endsWith('.md') && f !== '_template.md')
+      .map(f => {
+        const full = join(budgetDir, f);
+        const stat = statSync(full);
+        return { file: f, mtime: stat.mtime.getTime() };
+      })
+      .sort((a, b) => a.mtime - b.mtime);
+    writeFileSync(
+      join(budgetDir, 'index.json'),
+      JSON.stringify({ entries: budgetEntries }, null, 2) + '\n',
+      'utf8'
+    );
+    console.log(`[reindex] budget/index.json: ${budgetEntries.length} entradas`);
+  } catch (err) {
+    console.log('[reindex] budget/index.json omitido:', err.message);
+  }
+
+  // tasks/index.json
+  try {
+    const tasksDir = resolve(config.root, config.paths.tasks);
+    const tasks = readdirSync(tasksDir)
+      .filter(f => f.endsWith('.json') && f !== 'index.json')
+      .map(f => {
+        try {
+          const t = JSON.parse(readFileSync(join(tasksDir, f), 'utf8'));
+          return { id: t.id, status: t.status, project: t.project, goal: t.goal };
+        } catch { return null; }
+      })
+      .filter(Boolean);
+    writeFileSync(
+      join(tasksDir, 'index.json'),
+      JSON.stringify({ tasks, generatedAt: new Date().toISOString() }, null, 2) + '\n',
+      'utf8'
+    );
+    console.log(`[reindex] tasks/index.json: ${tasks.length} tareas`);
+  } catch (err) {
+    console.log('[reindex] tasks/index.json omitido:', err.message);
+  }
 }
 
 main().catch((err) => {
