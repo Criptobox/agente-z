@@ -1,0 +1,13 @@
+{
+  "total": 6,
+  "byType": {
+    "error": 1,
+    "criteria": 3,
+    "budget": 1,
+    "project": 1
+  },
+  "stale": 0,
+  "lowConf": 0,
+  "promotedRules": 0,
+  "generatedAt": "2026-08-11T05:57:31.730Z"
+}
