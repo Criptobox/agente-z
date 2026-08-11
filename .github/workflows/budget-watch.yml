@@ -40,4 +40,5 @@ jobs:
           git config user.email "agent@bot"
           git add memory/ tasks/
           git diff --staged --quiet || git commit -m "budget: snapshot horario"
+          git pull --rebase origin main || (echo "⚠ conflictos en pull rebase, abortando push" && git rebase --abort && exit 1)
           git push

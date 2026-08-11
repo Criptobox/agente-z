@@ -52,6 +52,8 @@ jobs:
           git config user.email "agent@bot"
           git add memory/
           git diff --staged --quiet || git commit -m "reindex: snapshot nocturno"
+          # Pull rebase para evitar rechazo si el remoto avanzó mientras corría el workflow
+          git pull --rebase origin main || (echo "⚠ conflictos en pull rebase, abortando push" && git rebase --abort && exit 1)
           git push
 
       - name: Deploy dashboard to Pages

@@ -59,4 +59,5 @@ jobs:
           git config user.email "agent@bot"
           git add tasks/ memory/
           git diff --staged --quiet || git commit -m "orchestrator: tarea creada para issue #${{ github.event.issue.number || github.event.inputs.issue_number }}"
+          git pull --rebase origin main || (echo "⚠ conflictos en pull rebase, abortando push" && git rebase --abort && exit 1)
           git push
