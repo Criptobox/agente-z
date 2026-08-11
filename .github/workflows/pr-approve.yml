@@ -1,0 +1,31 @@
+# .github/workflows/pr-approve.yml
+# Escucha comentarios /approve en Issues con tarea needs_human.
+# Reanuda el agente que pidió permiso.
+
+name: pr-approve
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+jobs:
+  approve:
+    if: startsWith(github.event.comment.body, '/approve')
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Reanudar tarea aprobada
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_NAME: issue_comment
+        run: node src/orchestrator.js

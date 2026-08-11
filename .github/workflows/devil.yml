@@ -1,0 +1,48 @@
+# .github/workflows/devil.yml
+# El abogado del diablo corre tras cada handoff de agente.
+# Si BLOCK, la tarea queda en estado blocked_by_devil y el siguiente agente debe abordar los concerns.
+
+name: devil
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: 'ID de la tarea a auditar'
+        required: true
+
+permissions:
+  contents: write
+  issues: write
+  models: read
+
+concurrency:
+  group: devil-${{ github.event.inputs.task_id }}
+  cancel-in-progress: false
+
+jobs:
+  devil:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Run devil
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TASK_ID: ${{ github.event.inputs.task_id }}
+          MODELS_PRIMARY: ${{ vars.MODELS_PRIMARY }}
+          MODELS_FALLBACK: ${{ vars.MODELS_FALLBACK }}
+          LOCALE: es
+        run: node src/agents/devil.js --task=${{ github.event.inputs.task_id }}
+
+      - name: Commit
+        run: |
+          git config user.name  "agent-devil"
+          git config user.email "agent@bot"
+          git add memory/ tasks/
+          git diff --staged --quiet || git commit -m "devil: audit ${{ github.event.inputs.task_id }}"
+          git push

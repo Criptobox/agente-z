@@ -1,0 +1,123 @@
+# .github/workflows/agent-run.yml
+# Ejecuta UN turno de UN agente.
+# Se dispara por repository_dispatch (lo manda orchestrator) o workflow_dispatch manual.
+
+name: agent-run
+
+on:
+  repository_dispatch:
+    types: [agent_run]
+  workflow_dispatch:
+    inputs:
+      agent:
+        description: 'Nombre del agente (code, research, test, security, ...)'
+        required: true
+      task_id:
+        description: 'ID de la tarea (TASK-XXXX)'
+        required: true
+
+permissions:
+  contents: write
+  issues: write
+  models: read
+  actions: write
+
+concurrency:
+  group: agent-run-${{ github.event.client_payload.task_id || github.event.inputs.task_id }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Determinar agente y tarea
+        id: ctx
+        run: |
+          AGENT="${{ github.event.client_payload.agent || github.event.inputs.agent }}"
+          TASK="${{ github.event.client_payload.task_id || github.event.inputs.task_id }}"
+          echo "agent=$AGENT" >> $GITHUB_OUTPUT
+          echo "task_id=$TASK" >> $GITHUB_OUTPUT
+          echo "Agente: $AGENT | Tarea: $TASK"
+
+      - name: Run agent
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          AGENT: ${{ steps.ctx.outputs.agent }}
+          TASK_ID: ${{ steps.ctx.outputs.task_id }}
+          TARGET_REPOS: ${{ vars.TARGET_REPOS }}
+          MODELS_PRIMARY: ${{ vars.MODELS_PRIMARY }}
+          MODELS_FALLBACK: ${{ vars.MODELS_FALLBACK }}
+          EMBEDDINGS_MODEL: ${{ vars.EMBEDDINGS_MODEL }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LOCALE: es
+          TIMEZONE: ${{ vars.TIMEZONE || 'America/Havana' }}
+        run: node src/runner.js
+
+      - name: Trigger devil (abogado del diablo post-handoff)
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'devil.yml',
+              ref: 'main',
+              inputs: {
+                task_id: '${{ steps.ctx.outputs.task_id }}'
+              }
+            });
+
+      - name: Trigger learner (post-mortem si la tarea está cerrada)
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const taskPath = 'tasks/${{ steps.ctx.outputs.task_id }}.json';
+            if (fs.existsSync(taskPath)) {
+              const task = JSON.parse(fs.readFileSync(taskPath, 'utf8'));
+              if (task.status === 'completed' || task.status === 'stuck') {
+                await github.rest.actions.createWorkflowDispatch({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  workflow_id: 'learner.yml',
+                  ref: 'main',
+                  inputs: { task_id: task.id }
+                });
+              }
+            }
+
+      - name: Trigger budget (snapshot post-turno)
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'budget-watch.yml',
+              ref: 'main'
+            });
+
+      - name: Commit memory + tasks
+        if: always()
+        run: |
+          git config user.name  "agent-${{ steps.ctx.outputs.agent }}"
+          git config user.email "agent@bot"
+          git add memory/ tasks/
+          git diff --staged --quiet || git commit -m "mem: ${{ steps.ctx.outputs.task_id }} por ${{ steps.ctx.outputs.agent }}"
+          git push

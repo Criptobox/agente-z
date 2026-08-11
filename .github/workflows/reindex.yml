@@ -1,0 +1,63 @@
+# .github/workflows/reindex.yml
+# Reconstrucción nocturna del índice + embeddings + staleness check.
+# Cron diario a las 2 AM hora local.
+
+name: reindex
+
+on:
+  schedule:
+    # 2 AM America/Havana = 6 AM UTC (EDT) / 7 AM UTC (EST)
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Forzar recálculo de embeddings (incluso existentes)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+permissions:
+  contents: write
+  models: read
+
+jobs:
+  reindex:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Run reindex
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TARGET_REPOS: ${{ vars.TARGET_REPOS }}
+          EMBEDDINGS_MODEL: ${{ vars.EMBEDDINGS_MODEL }}
+          LOCALE: es
+        run: |
+          FORCE=""
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            FORCE="--force"
+          fi
+          node src/reindex.js $FORCE
+
+      - name: Commit
+        run: |
+          git config user.name  "agent-reindex"
+          git config user.email "agent@bot"
+          git add memory/
+          git diff --staged --quiet || git commit -m "reindex: snapshot nocturno"
+          git push
+
+      - name: Deploy dashboard to Pages
+        if: success()
+        uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dashboard
+      - uses: actions/deploy-pages@v4

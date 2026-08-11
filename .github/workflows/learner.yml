@@ -1,0 +1,44 @@
+# .github/workflows/learner.yml
+# Post-mortem al cerrar una tarea (éxito o STUCK).
+# Propone lecciones según las 5 preguntas de la sección 13.2 del spec.
+
+name: learner
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: 'ID de la tarea cerrada'
+        required: true
+
+permissions:
+  contents: write
+  issues: write
+  models: read
+
+jobs:
+  learn:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Run learner
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TASK_ID: ${{ github.event.inputs.task_id }}
+          MODELS_PRIMARY: ${{ vars.MODELS_PRIMARY }}
+          MODELS_FALLBACK: ${{ vars.MODELS_FALLBACK }}
+          LOCALE: es
+        run: node src/agents/learner.js --task=${{ github.event.inputs.task_id }}
+
+      - name: Commit
+        run: |
+          git config user.name  "agent-learner"
+          git config user.email "agent@bot"
+          git add memory/
+          git diff --staged --quiet || git commit -m "learner: post-mortem ${{ github.event.inputs.task_id }}"
+          git push
