@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="description" content="Sistema multi-agente con memoria compartida — panel de control premium">
+
+  <!-- PWA -->
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#0b0d12" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#fbfbfc" media="(prefers-color-scheme: light)">
+  <meta name="color-scheme" content="dark light">
+
+  <!-- iOS PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="agent-brain">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+
+  <!-- Icons -->
+  <link rel="icon" type="image/svg+xml" href="./icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./favicon-180.png">
+
+  <!-- OG -->
+  <meta property="og:title" content="agent-brain · panel de control">
+  <meta property="og:description" content="Sistema multi-agente con memoria compartida">
+  <meta property="og:type" content="website">
+
+  <title>agent-brain · panel de control</title>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="preload" href="./app.js" as="script">
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       APP SHELL: sidebar + main + command palette
+       ═══════════════════════════════════════════════════════════════ -->
+
+  <div class="app">
+
+    <!-- ─── SIDEBAR ─── -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar__header">
+        <div class="brand">
+          <div class="brand__mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" width="22" height="22">
+              <defs>
+                <linearGradient id="markGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#6366f1"/>
+                  <stop offset="100%" stop-color="#a855f7"/>
+                </linearGradient>
+              </defs>
+              <circle cx="16" cy="16" r="3" fill="url(#markGrad)"/>
+              <circle cx="6" cy="8" r="1.8" fill="#6366f1"/>
+              <circle cx="26" cy="8" r="1.8" fill="#a855f7"/>
+              <circle cx="6" cy="24" r="1.8" fill="#10b981"/>
+              <circle cx="26" cy="24" r="1.8" fill="#f59e0b"/>
+              <g stroke="url(#markGrad)" stroke-width="0.8" opacity="0.7" fill="none">
+                <line x1="16" y1="16" x2="6" y2="8"/>
+                <line x1="16" y1="16" x2="26" y2="8"/>
+                <line x1="16" y1="16" x2="6" y2="24"/>
+                <line x1="16" y1="16" x2="26" y2="24"/>
+              </g>
+            </svg>
+          </div>
+          <div class="brand__text">
+            <div class="brand__name">agent-brain</div>
+            <div class="brand__sub" id="brand-status">sincronizando</div>
+          </div>
+        </div>
+        <button class="icon-btn icon-btn--ghost sidebar__toggle" id="sidebar-toggle" aria-label="Contraer sidebar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+      </div>
+
+      <nav class="nav" aria-label="Secciones">
+        <button class="nav__item is-active" data-target="overview">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+          </span>
+          <span class="nav__label">Vista general</span>
+          <kbd class="nav__kbd">1</kbd>
+        </button>
+        <button class="nav__item" data-target="tasks">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </span>
+          <span class="nav__label">Tareas</span>
+          <span class="nav__badge" id="nav-badge-tasks">—</span>
+          <kbd class="nav__kbd">2</kbd>
+        </button>
+        <button class="nav__item" data-target="errors">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </span>
+          <span class="nav__label">Errores</span>
+          <span class="nav__badge nav__badge--danger" id="nav-badge-errors">—</span>
+          <kbd class="nav__kbd">3</kbd>
+        </button>
+        <button class="nav__item" data-target="lessons">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M2 12a10 10 0 0 1 20 0c0 4-3 6-4 7H6c-1-1-4-3-4-7z"/></svg>
+          </span>
+          <span class="nav__label">Lecciones</span>
+          <span class="nav__badge" id="nav-badge-lessons">—</span>
+          <kbd class="nav__kbd">4</kbd>
+        </button>
+        <button class="nav__item" data-target="diary">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </span>
+          <span class="nav__label">Diario</span>
+          <kbd class="nav__kbd">5</kbd>
+        </button>
+        <button class="nav__item" data-target="budget">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </span>
+          <span class="nav__label">Presupuesto</span>
+          <span class="nav__badge" id="nav-badge-budget">—</span>
+          <kbd class="nav__kbd">6</kbd>
+        </button>
+
+        <div class="nav__divider"></div>
+
+        <button class="nav__item" data-target="agents">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+          </span>
+          <span class="nav__label">Agentes</span>
+          <kbd class="nav__kbd">7</kbd>
+        </button>
+        <button class="nav__item" data-target="memory">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          </span>
+          <span class="nav__label">Memoria</span>
+          <kbd class="nav__kbd">8</kbd>
+        </button>
+      </nav>
+
+      <div class="sidebar__footer">
+        <div class="system-card" id="system-card">
+          <div class="system-card__row">
+            <span class="system-card__dot" id="system-dot"></span>
+            <span class="system-card__label" id="system-label">en línea</span>
+          </div>
+          <div class="system-card__row system-card__row--muted">
+            <span id="system-uptime">v0.1.0</span>
+            <span>·</span>
+            <span id="system-time">--:--</span>
+          </div>
+        </div>
+        <button class="icon-btn icon-btn--ghost" id="theme-toggle" aria-label="Cambiar tema">
+          <svg class="theme-icon theme-icon--dark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="theme-icon theme-icon--light" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ─── MAIN ─── -->
+    <main class="main" id="main">
+
+      <!-- Topbar -->
+      <header class="topbar">
+        <button class="icon-btn icon-btn--ghost topbar__menu" id="menu-toggle" aria-label="Menú">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+
+        <div class="topbar__title">
+          <h1 id="view-title">Vista general</h1>
+          <span class="topbar__sub" id="view-sub">Sistema multi-agente</span>
+        </div>
+
+        <div class="topbar__search" id="search-trigger">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span>Buscar en memoria, tareas…</span>
+          <kbd>⌘K</kbd>
+        </div>
+
+        <div class="topbar__actions">
+          <button class="icon-btn icon-btn--ghost" id="refresh-btn" aria-label="Recargar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          </button>
+          <button class="btn btn--primary" id="install-btn" hidden>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Instalar</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Scrollable content -->
+      <div class="content" id="content">
+
+        <!-- ═══ VISTA GENERAL ═══ -->
+        <section class="view view--overview is-active" id="view-overview">
+
+          <!-- Hero: KPI grid + system pulse -->
+          <div class="hero">
+            <div class="hero__head">
+              <div>
+                <div class="hero__eyebrow">
+                  <span class="pulse-dot" id="hero-pulse"></span>
+                  <span id="hero-eyebrow-text">Sistema activo</span>
+                </div>
+                <h2 class="hero__title" id="hero-title">Memoria del sistema</h2>
+                <p class="hero__subtitle" id="hero-subtitle">Leyendo memoria compartida…</p>
+              </div>
+              <div class="hero__sparkline" id="hero-sparkline">
+                <svg width="180" height="56" viewBox="0 0 180 56">
+                  <defs>
+                    <linearGradient id="sparkGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.4"/>
+                      <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+                    </linearGradient>
+                  </defs>
+                  <path id="sparkline-area" d="" fill="url(#sparkGrad)"/>
+                  <path id="sparkline-line" d="" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <div class="hero__sparkline-meta">
+                  <span class="hero__sparkline-label">Actividad 7d</span>
+                  <span class="hero__sparkline-trend" id="hero-trend">+0%</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="hero__grid" id="stats-grid">
+              <div class="stat-card stat-card--skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+              <div class="stat-card stat-card--skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+              <div class="stat-card stat-card--skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+              <div class="stat-card stat-card--skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            </div>
+          </div>
+
+          <!-- 2-column layout below hero -->
+          <div class="grid-2">
+
+            <!-- Tasks preview -->
+            <div class="panel">
+              <div class="panel__header">
+                <h3 class="panel__title">Tareas activas</h3>
+                <a class="panel__link" data-target="tasks">ver todas →</a>
+              </div>
+              <div class="panel__body" id="overview-tasks">
+                <div class="skeleton skeleton--text"></div>
+                <div class="skeleton skeleton--text"></div>
+              </div>
+            </div>
+
+            <!-- Diary preview -->
+            <div class="panel">
+              <div class="panel__header">
+                <h3 class="panel__title">Último diario</h3>
+                <a class="panel__link" data-target="diary">ver histórico →</a>
+              </div>
+              <div class="panel__body" id="overview-diary">
+                <div class="skeleton skeleton--text"></div>
+                <div class="skeleton skeleton--text"></div>
+                <div class="skeleton skeleton--text skeleton--short"></div>
+              </div>
+            </div>
+
+            <!-- Budget preview -->
+            <div class="panel">
+              <div class="panel__header">
+                <h3 class="panel__title">Presupuesto</h3>
+                <a class="panel__link" data-target="budget">detalle →</a>
+              </div>
+              <div class="panel__body" id="overview-budget">
+                <div class="skeleton skeleton--text"></div>
+              </div>
+            </div>
+
+            <!-- Memory distribution -->
+            <div class="panel">
+              <div class="panel__header">
+                <h3 class="panel__title">Distribución de memoria</h3>
+                <a class="panel__link" data-target="memory">memoria →</a>
+              </div>
+              <div class="panel__body" id="overview-memory">
+                <div class="skeleton skeleton--text"></div>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ═══ TAREAS ═══ -->
+        <section class="view" id="view-tasks">
+          <div class="view__header">
+            <h2 class="view__title">Tareas</h2>
+            <div class="filter-chips" id="tasks-filters">
+              <button class="chip is-active" data-filter="all">Todas</button>
+              <button class="chip" data-filter="in_progress">En progreso</button>
+              <button class="chip" data-filter="needs_human">Espera humano</button>
+              <button class="chip" data-filter="stuck">Stuck</button>
+              <button class="chip" data-filter="handoff">Handoff</button>
+            </div>
+          </div>
+          <div class="card-list" id="tasks-list"></div>
+        </section>
+
+        <!-- ═══ ERRORES ═══ -->
+        <section class="view" id="view-errors">
+          <div class="view__header">
+            <h2 class="view__title">Errores abiertos</h2>
+            <div class="filter-chips">
+              <button class="chip is-active" data-filter="all">Todos</button>
+              <button class="chip" data-filter="high">Críticos</button>
+              <button class="chip" data-filter="stale">Stale</button>
+            </div>
+          </div>
+          <div class="card-list" id="errors-list"></div>
+        </section>
+
+        <!-- ═══ LECCIONES ═══ -->
+        <section class="view" id="view-lessons">
+          <div class="view__header">
+            <h2 class="view__title">Lecciones activas</h2>
+            <div class="filter-chips">
+              <button class="chip is-active" data-filter="all">Todas</button>
+              <button class="chip" data-filter="promotable">Promovibles</button>
+              <button class="chip" data-filter="general">Generales</button>
+              <button class="chip" data-filter="project">Proyecto</button>
+            </div>
+          </div>
+          <div class="card-list" id="lessons-list"></div>
+        </section>
+
+        <!-- ═══ DIARIO ═══ -->
+        <section class="view" id="view-diary">
+          <div class="view__header">
+            <h2 class="view__title">Diario</h2>
+            <span class="view__meta" id="diary-date">—</span>
+          </div>
+          <div class="card-list" id="diary-list"></div>
+        </section>
+
+        <!-- ═══ PRESUPUESTO ═══ -->
+        <section class="view" id="view-budget">
+          <div class="view__header">
+            <h2 class="view__title">Presupuesto</h2>
+            <span class="view__meta" id="budget-status">—</span>
+          </div>
+          <div class="card-list" id="budget-list"></div>
+        </section>
+
+        <!-- ═══ AGENTES ═══ -->
+        <section class="view" id="view-agents">
+          <div class="view__header">
+            <h2 class="view__title">Agentes</h2>
+            <span class="view__meta">10 activos</span>
+          </div>
+          <div class="card-list" id="agents-list"></div>
+        </section>
+
+        <!-- ═══ MEMORIA ═══ -->
+        <section class="view" id="view-memory">
+          <div class="view__header">
+            <h2 class="view__title">Memoria</h2>
+            <span class="view__meta" id="memory-count">—</span>
+          </div>
+          <div class="card-list" id="memory-list"></div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       COMMAND PALETTE (⌘K / Ctrl+K)
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="cmdk" id="cmdk" hidden>
+    <div class="cmdk__backdrop" data-close></div>
+    <div class="cmdk__panel" role="dialog" aria-label="Búsqueda rápida">
+      <div class="cmdk__header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="cmdk__input" id="cmdk-input" placeholder="Buscar tareas, errores, lecciones…" autocomplete="off">
+        <kbd>esc</kbd>
+      </div>
+      <div class="cmdk__results" id="cmdk-results"></div>
+      <div class="cmdk__footer">
+        <span><kbd>↑↓</kbd> navegar</span>
+        <span><kbd>↵</kbd> abrir</span>
+        <span><kbd>esc</kbd> cerrar</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" hidden>
+    <span class="toast__icon"></span>
+    <span class="toast__text"></span>
+    <button class="toast__action"></button>
+  </div>
+
+  <!-- Mobile overlay -->
+  <div class="sidebar-overlay" id="sidebar-overlay" hidden></div>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>

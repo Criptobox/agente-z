@@ -1,0 +1,89 @@
+{
+  "BUG-001": {
+    "type": "error",
+    "project": "tiendamax",
+    "title": "calculateTotal devuelve NaN al eliminar producto",
+    "tags": [
+      "carrito",
+      "nan",
+      "referencia-invalida"
+    ],
+    "confidence": 70,
+    "stale": false,
+    "files": [
+      "js/cart.js"
+    ],
+    "symbols": [
+      "calculateTotal",
+      "removeItem"
+    ],
+    "scope": null,
+    "times_applied": null,
+    "times_prevented_failure": null,
+    "promoted_to_rule": false,
+    "updated": "2026-08-11"
+  },
+  "CRIT-0001": {
+    "type": "criteria",
+    "project": null,
+    "title": "Prefiere archivos completos sobre snippets",
+    "tags": [],
+    "confidence": null,
+    "stale": false,
+    "files": [],
+    "symbols": [],
+    "scope": "general",
+    "times_applied": null,
+    "times_prevented_failure": null,
+    "promoted_to_rule": false,
+    "updated": "2026-08-11"
+  },
+  "CRIT-0002": {
+    "type": "criteria",
+    "project": null,
+    "title": "Trabaja mobile-only desde la app de GitHub en 3G",
+    "tags": [],
+    "confidence": null,
+    "stale": false,
+    "files": [],
+    "symbols": [],
+    "scope": "general",
+    "times_applied": null,
+    "times_prevented_failure": null,
+    "promoted_to_rule": false,
+    "updated": "2026-08-11"
+  },
+  "CRIT-0003": {
+    "type": "criteria",
+    "project": null,
+    "title": "Odias el !important acumulado en CSS",
+    "tags": [],
+    "confidence": null,
+    "stale": false,
+    "files": [],
+    "symbols": [],
+    "scope": "general",
+    "times_applied": null,
+    "times_prevented_failure": null,
+    "promoted_to_rule": false,
+    "updated": "2026-08-11"
+  },
+  "tiendamax": {
+    "type": "project",
+    "project": null,
+    "title": "TiendaMax",
+    "tags": [
+      "e-commerce",
+      "vanilla-js"
+    ],
+    "confidence": null,
+    "stale": false,
+    "files": [],
+    "symbols": [],
+    "scope": null,
+    "times_applied": null,
+    "times_prevented_failure": null,
+    "promoted_to_rule": false,
+    "updated": "2026-01-01"
+  }
+}
