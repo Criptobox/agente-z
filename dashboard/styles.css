@@ -4413,6 +4413,7 @@ body.compact-mode .inv-kpi__value { font-size: 24px; }
 
   .kpi-card {
     padding: 12px;
+    min-height: 110px;
   }
 
   .kpi-card__value {
@@ -4421,6 +4422,29 @@ body.compact-mode .inv-kpi__value { font-size: 24px; }
 
   .kpi-card__label {
     font-size: 10px;
+  }
+
+  .kpi-card__icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .kpi-card__icon svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .kpi-card__sparkline {
+    height: 24px;
+  }
+
+  .kpi-card__change {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+
+  .kpi-card__foot {
+    font-size: 9px;
   }
 
   /* ─── Quick actions ─── */
@@ -4432,6 +4456,20 @@ body.compact-mode .inv-kpi__value { font-size: 24px; }
   .quick-action {
     padding: 12px 8px;
     font-size: 13px;
+    min-height: 76px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .quick-action__icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .quick-action__icon svg {
+    width: 18px;
+    height: 18px;
   }
 
   /* ─── Toasts en móvil ─── */
@@ -4455,12 +4493,53 @@ body.compact-mode .inv-kpi__value { font-size: 24px; }
 
 /* ─── Pantallas muy angostas (≤480px) ─── */
 @media (max-width: 480px) {
-  /* Una sola columna para todo */
+  /* KPI y quick-actions SIEMPRE en 2 columnas en móvil (request del usuario) */
   .kpi-grid,
-  .quick-actions,
+  .quick-actions {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* En cambio form-grid (settings) y connections-grid sí van a 1 columna
+     porque los inputs necesitan todo el ancho para escribir cómodamente. */
   .form-grid,
   .connections-grid {
     grid-template-columns: 1fr !important;
+  }
+
+  /* KPI cards más compactas */
+  .kpi-card {
+    padding: 10px !important;
+    min-height: 0;
+  }
+
+  .kpi-card__value {
+    font-size: 18px;
+  }
+
+  .kpi-card__label {
+    font-size: 9px;
+    line-height: 1.2;
+  }
+
+  /* Quick actions más compactos */
+  .quick-action {
+    padding: 10px 6px !important;
+    font-size: 11px !important;
+    min-height: 70px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .quick-action__icon svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .quick-action__label {
+    font-size: 11px;
+    line-height: 1.2;
   }
 
   /* Mensajes del chat ocupan casi todo el ancho */
@@ -4483,7 +4562,29 @@ body.compact-mode .inv-kpi__value { font-size: 24px; }
   /* Ajuste de padding general */
   .view,
   .view--overview {
-    padding: 12px;
+    padding: 10px;
+  }
+
+  /* Hero más compacto en móvil angosto */
+  .hero {
+    padding: 12px !important;
+  }
+
+  .hero__title {
+    font-size: 18px !important;
+  }
+
+  .hero__subtitle {
+    font-size: 12px !important;
+  }
+
+  .hero__sparkline {
+    display: none;
+  }
+
+  /* Charts row: apilar en móvil angosto */
+  .charts-row {
+    grid-template-columns: 1fr !important;
   }
 
   /* Métricas más compactas */

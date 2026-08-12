@@ -61,9 +61,10 @@
               </select>
             </div>
           </div>
-          <div style="display:flex;gap:var(--s-2);margin-top:var(--s-3)">
+          <div style="display:flex;gap:var(--s-2);margin-top:var(--s-3);flex-wrap:wrap">
             <button class="btn btn--primary" id="set-llm-save">💾 Guardar</button>
             <button class="btn btn--analyze" id="set-llm-test">🔍 Probar conexión</button>
+            <button class="btn" id="set-clear-cache" title="Borra la caché del Service Worker y recarga">🔄 Forzar actualización</button>
           </div>
           <div id="set-llm-result" style="margin-top:var(--s-3)"></div>
           <div id="set-llm-cors-hint" class="cors-hint"></div>
@@ -261,6 +262,32 @@
       save('set-llm-key', 'llm-api-key');
       save('set-fallback-provider', 'llm-fallback-provider');
       window.toast && window.toast('Configuración de IA guardada', '💾');
+    });
+
+    // Forzar actualización: borrar caché del SW y recargar
+    document.getElementById('set-clear-cache')?.addEventListener('click', async () => {
+      try {
+        if (navigator.serviceWorker?.controller) {
+          navigator.serviceWorker.controller.postMessage('CLEAR_CACHE');
+          // Dar tiempo al SW de limpiar antes de recargar
+          setTimeout(() => {
+            if (caches?.keys) {
+              caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).then(() => {
+                window.toast && window.toast('Caché borrada, recargando…', '🔄');
+                setTimeout(() => location.reload(), 600);
+              });
+            } else {
+              location.reload();
+            }
+          }, 300);
+        } else {
+          // No hay SW — simplemente recargar saltando caché
+          location.reload();
+        }
+      } catch (err) {
+        console.error('[settings] clear-cache error:', err);
+        location.reload();
+      }
     });
 
     document.getElementById('set-llm-test')?.addEventListener('click', async () => {
