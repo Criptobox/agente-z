@@ -136,7 +136,63 @@
   // Providers que SÍ funcionan directo desde browser:
   //   - openrouter, deepseek, gemini
   const CORS_BLOCKED_PROVIDERS = ['groq', 'openai', 'anthropic', 'github'];
-  const CORS_PROXY = 'https://corsproxy.io/?url=';
+
+  // Múltiples proxies CORS de respaldo (corsproxy.io bloquea POSTs a APIs IA)
+  // Se intentan en orden hasta que uno funcione.
+  const CORS_PROXIES = [
+    (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
+    (u) => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
+    (u) => 'https://thingproxy.freeboard.io/fetch/' + u,
+  ];
+
+  // Wrapper de fetch que intenta directo primero, y si falla CORS prueba con proxies.
+  async function fetchWithCORS(url, options, provider) {
+    const needsProxy = CORS_BLOCKED_PROVIDERS.includes(provider);
+
+    // Si el provider está en lista negra CORS, ir directo al proxy
+    if (needsProxy) {
+      let lastErr = null;
+      for (const makeProxyUrl of CORS_PROXIES) {
+        const proxyUrl = makeProxyUrl(url);
+        try {
+          const res = await fetch(proxyUrl, options);
+          if (res.ok || (res.status >= 400 && res.status < 500)) {
+            // 4xx es respuesta válida del API (ej: 401 key inválida) — devolverla
+            return res;
+          }
+          // 5xx del proxy → probar siguiente
+          lastErr = new Error(`Proxy ${proxyUrl.slice(0, 40)}… devolvió ${res.status}`);
+        } catch (err) {
+          lastErr = err;
+          console.warn(`[streaming] proxy falló: ${err.message}, probando siguiente…`);
+        }
+      }
+      throw new Error(
+        `No se pudo conectar a ${provider} a través de ningún proxy CORS. ` +
+        `Último error: ${lastErr?.message || 'desconocido'}. ` +
+        `Recomendado: usá OpenRouter, DeepSeek o Gemini que funcionan directo desde el navegador.`
+      );
+    }
+
+    // Provider que SÍ soporta CORS — intentar directo, fallback a proxy si falla
+    try {
+      return await fetch(url, options);
+    } catch (fetchErr) {
+      if (fetchErr.name === 'TypeError' || fetchErr.message.includes('Failed to fetch')) {
+        console.warn(`[streaming] ${provider} fetch directo falló (${fetchErr.message}), reintentando con proxies CORS…`);
+        for (const makeProxyUrl of CORS_PROXIES) {
+          const proxyUrl = makeProxyUrl(url);
+          try {
+            const res = await fetch(proxyUrl, options);
+            if (res.ok || (res.status >= 400 && res.status < 500)) return res;
+          } catch (err) {
+            console.warn(`[streaming] proxy fallback falló: ${err.message}`);
+          }
+        }
+      }
+      throw fetchErr;
+    }
+  }
 
   async function streamOnce(attempt, messages, opts, onToken, onDone, onError, isFallback) {
     const cfg = getProviderConfig(attempt.provider, attempt.model, attempt.key);
@@ -145,41 +201,24 @@
     const useStream = cfg.supportsStream && opts.stream !== false;
     const body = cfg.chatBody(messages, { ...opts, stream: useStream });
 
-    // Si el provider está en lista negra CORS, rutear a través del proxy
-    let url = cfg.endpoint;
-    const needsProxy = CORS_BLOCKED_PROVIDERS.includes(attempt.provider);
-    if (needsProxy) {
-      url = CORS_PROXY + encodeURIComponent(cfg.endpoint);
-    }
-
-    let res;
-    try {
-      res = await fetch(url, {
-        method: 'POST',
-        headers: cfg.headers,
-        body: JSON.stringify(body),
-        signal: opts.signal,
-      });
-    } catch (fetchErr) {
-      // Si falla el fetch directo (CORS, red, etc.) y no estamos usando proxy aún, reintentar con proxy
-      if (!needsProxy && (fetchErr.name === 'TypeError' || fetchErr.message.includes('Failed to fetch'))) {
-        console.warn(`[streaming] ${attempt.provider} fetch directo falló (${fetchErr.message}), reintentando con proxy CORS…`);
-        const proxyUrl = CORS_PROXY + encodeURIComponent(cfg.endpoint);
-        res = await fetch(proxyUrl, {
-          method: 'POST',
-          headers: cfg.headers,
-          body: JSON.stringify(body),
-          signal: opts.signal,
-        });
-      } else {
-        throw fetchErr;
-      }
-    }
+    const res = await fetchWithCORS(cfg.endpoint, {
+      method: 'POST',
+      headers: cfg.headers,
+      body: JSON.stringify(body),
+      signal: opts.signal,
+    }, attempt.provider);
 
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
       let detail = txt.slice(0, 300);
-      try { const j = JSON.parse(txt); detail = j.error?.message || j.message || detail; } catch {}
+      try { const j = JSON.parse(txt); detail = j.error?.message || j.message || j.error || detail; } catch {}
+      // Mensajes más amigables para errores comunes
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(`HTTP ${res.status}: API key inválida o sin permisos. Detalle: ${detail}`);
+      }
+      if (res.status === 429) {
+        throw new Error(`HTTP 429: Rate limit excedido en ${attempt.provider}. Esperá unos segundos o usá otro provider.`);
+      }
       throw new Error(`HTTP ${res.status}: ${detail}`);
     }
 
@@ -341,6 +380,8 @@
     parseCommand,
     getHelpText,
     initRealtime,
+    fetchWithCORS,        // expuesto para que settings.js lo use en "Probar conexión"
+    CORS_BLOCKED_PROVIDERS,
   };
   window.chatHistory = {
     save: saveChatHistory,

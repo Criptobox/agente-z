@@ -71,6 +71,34 @@
         </div>
       </div>
 
+      <!-- GitHub repo + PAT (para crear Issues y lanzar análisis) -->
+      <div class="panel" style="margin-bottom: var(--s-4)">
+        <div class="panel__header"><h3 class="panel__title">🐙 GitHub Repo + PAT</h3></div>
+        <div class="panel__body">
+          <div class="form-grid">
+            <div class="field">
+              <label class="field__label">Repo (owner/name)</label>
+              <input class="field__input" type="text" id="set-gh-repo" placeholder="Criptobox/agente-z">
+              <small id="set-gh-repo-hint" style="display:block;color:var(--text-secondary);font-size:11px;margin-top:4px">
+                Formato: <code>owner/repo</code>. Ej: <code>Criptobox/agente-z</code>
+              </small>
+            </div>
+            <div class="field">
+              <label class="field__label">Personal Access Token (PAT)</label>
+              <input class="field__input" type="password" id="set-gh-pat" placeholder="ghp_xxx...">
+              <small id="set-gh-pat-hint" style="display:block;color:var(--text-secondary);font-size:11px;margin-top:4px">
+                Crealo en github.com/settings/tokens · Scopes mínimos: <code>repo</code>, <code>workflow</code>
+              </small>
+            </div>
+          </div>
+          <div style="display:flex;gap:var(--s-2);margin-top:var(--s-3);flex-wrap:wrap">
+            <button class="btn btn--primary" id="set-gh-save">💾 Guardar</button>
+            <button class="btn" id="set-gh-test">🔍 Verificar PAT</button>
+          </div>
+          <div id="set-gh-result" style="margin-top:var(--s-3)"></div>
+        </div>
+      </div>
+
       <!-- Backend -->
       <div class="panel" style="margin-bottom: var(--s-4)">
         <div class="panel__header"><h3 class="panel__title">🗄️ Backend</h3></div>
@@ -218,6 +246,8 @@
     set('set-llm-model', get('llm-model', 'llama-3.1-70b-versatile'));
     set('set-llm-key', get('llm-api-key', ''));
     set('set-fallback-provider', get('llm-fallback-provider', ''));
+    set('set-gh-repo', get('agent-brain-repo', ''));
+    set('set-gh-pat', get('agent-brain-pat', ''));
     set('set-supabase-url', get('agent-brain-supabase-url', ''));
     set('set-supabase-key', get('agent-brain-supabase-anon-key', ''));
     set('set-edge-url', get('agent-brain-edge-function-url', ''));
@@ -329,14 +359,30 @@
         } else {
           throw new Error('Provider no soportado para test');
         }
-        const res = await fetch(endpoint, { method: 'POST', headers, body });
+        // Usar fetchWithCORS para que el test también funcione con providers que bloquean CORS
+        const fetcher = window.streaming?.fetchWithCORS || fetch;
+        const res = await fetcher(endpoint, { method: 'POST', headers, body }, provider);
+        const txt = await res.text().catch(() => '');
         if (res.ok) {
-          result.innerHTML = '<div class="info-banner" style="background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.3)">✅ Conexión exitosa con ' + provider + ' / ' + model + '</div>';
+          result.innerHTML = '<div class="info-banner" style="background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.3)">✅ Conexión exitosa con <strong>' + provider + '</strong> / ' + model + '</div>';
         } else {
-          result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">❌ Error ' + res.status + ': ' + res.statusText + '</div>';
+          let detail = txt.slice(0, 200);
+          try { const j = JSON.parse(txt); detail = j.error?.message || j.message || j.error || detail; } catch {}
+          if (res.status === 401 || res.status === 403) {
+            result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">❌ HTTP ' + res.status + ': API key inválida o sin permisos.<br><small>' + detail + '</small></div>';
+          } else if (res.status === 429) {
+            result.innerHTML = '<div class="info-banner" style="background:rgba(245,158,11,0.08);border-color:rgba(245,158,11,0.3)">⚠️ HTTP 429: Rate limit excedido. Esperá unos segundos.</div>';
+          } else {
+            result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">❌ HTTP ' + res.status + ': ' + detail + '</div>';
+          }
         }
       } catch (err) {
-        result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">❌ ' + err.message + '</div>';
+        let msg = err.message || String(err);
+        let hint = '';
+        if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+          hint = '<br><small>💡 Esto suele ser CORS o sin conexión. Si usás Groq/OpenAI/Anthropic/GitHub, se usa un proxy CORS automáticamente. Si falla, probá con <strong>OpenRouter</strong> o <strong>DeepSeek</strong>.</small>';
+        }
+        result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">❌ ' + msg + hint + '</div>';
       }
     });
 
@@ -348,6 +394,48 @@
       save('set-create-issues', 'create-issues-from-chat', 'checked');
       save('set-execute-workflows', 'execute-workflows', 'checked');
       window.toast && window.toast('Configuración de backend guardada', '💾');
+    });
+
+    // ─── GitHub repo + PAT ───
+    document.getElementById('set-gh-save')?.addEventListener('click', () => {
+      const repo = document.getElementById('set-gh-repo')?.value?.trim() || '';
+      const pat = document.getElementById('set-gh-pat')?.value?.trim() || '';
+      localStorage.setItem('agent-brain-repo', repo);
+      localStorage.setItem('agent-brain-pat', pat);
+      window.toast && window.toast('GitHub repo + PAT guardados', '🐙');
+    });
+
+    document.getElementById('set-gh-test')?.addEventListener('click', async () => {
+      const repo = document.getElementById('set-gh-repo')?.value?.trim() || '';
+      const pat = document.getElementById('set-gh-pat')?.value?.trim() || '';
+      const result = document.getElementById('set-gh-result');
+      if (!repo) { result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">⚠️ Falta el repo (formato: owner/name)</div>'; return; }
+      if (!pat) { result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">⚠️ Falta el PAT</div>'; return; }
+      result.innerHTML = '<div class="inv-loading"><div class="inv-loading__spinner"></div><div>Verificando PAT contra ' + repo + '…</div></div>';
+      try {
+        // GitHub API SÍ soporta CORS desde el navegador, así que fetch directo
+        const res = await fetch('https://api.github.com/repos/' + repo, {
+          headers: {
+            'Authorization': 'Bearer ' + pat,
+            'Accept': 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          result.innerHTML = '<div class="info-banner" style="background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.3)">✅ PAT válido. Repo: <strong>' + data.full_name + '</strong> · Permisos: ' + data.permissions?.admin ? 'admin' : 'write' + '</div>';
+        } else if (res.status === 401) {
+          result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">❌ PAT inválido o expirado (HTTP 401)</div>';
+        } else if (res.status === 404) {
+          result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">❌ Repo no encontrado o el PAT no tiene acceso (HTTP 404)<br><small>Verificá que el repo exista y que el PAT tenga scope <code>repo</code></small></div>';
+        } else if (res.status === 403) {
+          result.innerHTML = '<div class="info-banner" style="background:rgba(245,158,11,0.08);border-color:rgba(245,158,11,0.3)">⚠️ Rate limit de GitHub API alcanzado (HTTP 403). Esperá unos minutos.</div>';
+        } else {
+          result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">❌ HTTP ' + res.status + ': ' + res.statusText + '</div>';
+        }
+      } catch (err) {
+        result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">❌ ' + err.message + '<br><small>¿Sin conexión a internet?</small></div>';
+      }
     });
 
     document.getElementById('set-profile-save')?.addEventListener('click', () => {
@@ -542,11 +630,13 @@
     if (corsHint) {
       if (CORS_OK_PROVIDERS.includes(provider)) {
         corsHint.className = 'cors-hint';
-        corsHint.innerHTML = '✅ <strong>Funciona directo desde el navegador.</strong> No necesita proxy ni backend.';
+        corsHint.innerHTML = '✅ <strong>Funciona directo desde el navegador.</strong> No necesita proxy ni backend. Respondé más rápido que los otros.';
       } else {
         corsHint.className = 'cors-hint cors-hint--warning';
-        corsHint.innerHTML = '⚠️ <strong>' + provider + ' bloquea llamadas desde el navegador (CORS).</strong> ' +
-          'Se usará un proxy CORS público automáticamente. <strong>Recomendado:</strong> usá OpenRouter, DeepSeek o Gemini para mejor rendimiento y privacidad.';
+        corsHint.innerHTML = '⚠️ <strong>' + provider + ' bloquea llamadas directas desde el navegador (CORS).</strong> ' +
+          'Se usará un proxy CORS automáticamente (allorigins, corsproxy, thingproxy). ' +
+          'Puede ser más lento o fallar si los proxies están caídos. ' +
+          '<strong>Recomendado:</strong> usá OpenRouter, DeepSeek o Gemini para mejor rendimiento y privacidad.';
       }
     }
   }
