@@ -66,27 +66,37 @@ jobs:
       - name: Trigger devil (abogado del diablo post-handoff)
         if: success()
         uses: actions/github-script@v7
+        env:
+          TASK_ID: ${{ steps.ctx.outputs.task_id }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const taskId = process.env.TASK_ID;
+            if (!taskId) throw new Error('TASK_ID no definido');
             await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: 'devil.yml',
               ref: 'main',
-              inputs: {
-                task_id: '${{ steps.ctx.outputs.task_id }}'
-              }
+              inputs: { task_id: taskId }
             });
 
       - name: Trigger learner (post-mortem si la tarea está cerrada)
         if: success()
         uses: actions/github-script@v7
+        env:
+          TASK_ID: ${{ steps.ctx.outputs.task_id }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
-            const taskPath = 'tasks/${{ steps.ctx.outputs.task_id }}.json';
+            const taskId = process.env.TASK_ID;
+            if (!taskId) throw new Error('TASK_ID no definido');
+            // Validar formato TASK-XXXX para prevenir path traversal
+            if (!/^TASK-\d{4,}$/.test(taskId)) {
+              throw new Error(`task_id con formato inválido: ${taskId}`);
+            }
+            const taskPath = `tasks/${taskId}.json`;
             if (fs.existsSync(taskPath)) {
               const task = JSON.parse(fs.readFileSync(taskPath, 'utf8'));
               if (task.status === 'completed' || task.status === 'stuck') {
@@ -115,10 +125,32 @@ jobs:
 
       - name: Commit memory + tasks
         if: always()
+        env:
+          AGENT_NAME: ${{ steps.ctx.outputs.agent }}
+          TASK_ID: ${{ steps.ctx.outputs.task_id }}
         run: |
-          git config user.name  "agent-${{ steps.ctx.outputs.agent }}"
+          # Validar formato para prevenir inyección en git config / commit message
+          if ! echo "$AGENT_NAME" | grep -qE '^[a-z_]+$'; then
+            echo "ERROR: AGENT_NAME inválido: $AGENT_NAME"
+            exit 1
+          fi
+          if ! echo "$TASK_ID" | grep -qE '^TASK-[0-9]+$'; then
+            echo "ERROR: TASK_ID inválido: $TASK_ID"
+            exit 1
+          fi
+          git config user.name  "agent-$AGENT_NAME"
           git config user.email "agent@bot"
           git add memory/ tasks/
-          git diff --staged --quiet || git commit -m "mem: ${{ steps.ctx.outputs.task_id }} por ${{ steps.ctx.outputs.agent }}"
-          git pull --rebase origin main || (echo "⚠ conflictos en pull rebase, abortando push" && git rebase --abort && exit 1)
-          git push
+          git diff --staged --quiet || git commit -m "mem: $TASK_ID por $AGENT_NAME"
+          # Reintentar push hasta 3 veces si hay conflictos de rebase
+          for i in 1 2 3; do
+            if git pull --rebase origin main; then
+              if git push; then
+                exit 0
+              fi
+            fi
+            echo "⚠ intento $i falló, reintentando en ${i}s..."
+            sleep $((i * 2))
+          done
+          echo "✗ no se pudo pushear tras 3 intentos"
+          exit 1
