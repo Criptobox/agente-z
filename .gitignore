@@ -1,0 +1,40 @@
+# Dependencias
+node_modules/
+
+# Entorno
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.vscode/
+.editorconfig-cache
+
+# No commitear snapshots locales de simulación
+tests/fixtures/_snapshots/
+.smoke-cache/
+
+# Fixtures generados dinámicamente por gate_check.test.js
+# (se regeneran en cada run de tests, no deben commitearse)
+tests/fixtures/test_clean.js
+tests/fixtures/test_diff_scan.js
+tests/fixtures/test_diff_scan_clean.js
+tests/fixtures/test_ghp.js
+tests/fixtures/test_secret.js
+
+# Directorios temporales de tests (memory.test.js, context.test.js, devil.test.js)
+tests/fixtures/_tmp_*/
+
+# Datos locales de desarrollo (memoria generada por smoke runs locales)
+memory/_local/
