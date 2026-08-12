@@ -37,10 +37,14 @@ En `Settings → Secrets and variables → Actions → Variables`:
 | `BUDGET_DAILY_ACTIONS_MINUTES` | `180` | Cuota de minutos de Actions |
 | `BUDGET_WARN_PERCENT` | `80` | A partir de qué % avisar |
 | `TIMEZONE` | `America/Havana` | Para el cron del diario |
+| `WEB_ENABLED` | `true` | Habilita web_search/web_fetch (default true) |
+| `OLLAMA_ENDPOINT` | `http://localhost:11434/v1` | (opcional) Endpoint Ollama/llama.cpp para inferencia local |
+| `OLLAMA_MODEL` | `qwen2.5:7b` | (opcional) Modelo local a usar como último fallback |
 
 **Secrets** (opcionales, solo si quieres fallback externo):
 - `GROQ_API_KEY` — fallback Groq
 - `GEMINI_API_KEY` — fallback Gemini
+- `OLLAMA_KEY` — (opcional) Bearer token si tu Ollama server requiere auth
 
 El `GITHUB_TOKEN` lo inyecta Actions automáticamente, no lo configures.
 

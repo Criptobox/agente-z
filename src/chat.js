@@ -95,11 +95,11 @@ async function answer(question, history = []) {
   ).join('\n') || '(sin lecciones activas)';
 
   const diarySummary = ctx.lastDiary
-    ? `Último diario (${ctx.lastDiary.date || '?'}): ${ctx.lastDiary.headline || '(sin headline)'}`
+    ? `Último diario (${ctx.lastDiary.created || ctx.lastDiary.date || '?'}): ${ctx.lastDiary.title || ctx.lastDiary.headline || '(sin headline)'}`
     : '(sin diarios todavía)';
 
   const budgetSummary = ctx.lastBudget
-    ? `Budget ${ctx.lastBudget.date || '?'}: ${ctx.lastBudget.tokens_percent || 0}% tokens, ${ctx.lastBudget.minutes_percent || 0}% minutos, kind=${ctx.lastBudget.kind || 'OK'}`
+    ? `Budget ${ctx.lastBudget.date || ctx.lastBudget.created?.slice(0,10) || '?'}: ${ctx.lastBudget.tokens_percent || 0}% tokens, ${ctx.lastBudget.minutes_percent || 0}% minutos, kind=${ctx.lastBudget.kind || 'OK'}`
     : '(sin budget todavía)';
 
   const system = `Eres CHAT, la interfaz conversacional de agent-brain. Respondes preguntas del usuario sobre el sistema en lenguaje natural.

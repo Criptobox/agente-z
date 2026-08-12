@@ -1,6 +1,6 @@
 // src/tools/index.js
 // Registro central de herramientas.
-// Un agente solo puede invocar tools que estén registrados aquí Y listados en su definición.
+// Un agente solo puede invocar tools que estén registradas aquí Y listadas en su definición.
 //
 // Cada tool expone:
 //   name:           identificador único
@@ -18,6 +18,10 @@ import { issue_comment } from './issue_comment.js';
 import { read_project_file } from './read_project_file.js';
 import { list_repo_files } from './list_repo_files.js';
 import { compare_inventories } from './compare_inventories.js';
+import { web_search } from './web_search.js';
+import { web_fetch } from './web_fetch.js';
+import { huggingface_search } from './huggingface_search.js';
+import { ollama_generate } from './ollama_generate.js';
 
 export const TOOLS = {
   file_read,
@@ -29,6 +33,10 @@ export const TOOLS = {
   read_project_file,
   list_repo_files,
   compare_inventories,
+  web_search,
+  web_fetch,
+  huggingface_search,
+  ollama_generate,
 };
 
 export function getTool(name) {

@@ -16,7 +16,8 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { config, restApiHeaders } from '../config.js';
 import { complete } from '../models.js';
-import { listMemories } from '../memory.js';
+import { listMemories, writeMemory, nextId } from '../memory.js';
+import { parseAgentJSON } from '../utils/json.js';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -168,12 +169,45 @@ async function main() {
     { jsonMode: true, temperature: 0.4 }
   );
 
-  const first = raw.indexOf('{');
-  const last = raw.lastIndexOf('}');
-  const diary = JSON.parse(raw.slice(first, last + 1));
+  const diary = parseAgentJSON(raw);
+  if (!diary || !diary.headline) {
+    console.error('[diarist] formato de respuesta inválido, abortando');
+    process.exit(1);
+  }
   console.log(`[diarist] headline="${diary.headline}" highlight=${diary.highlight}`);
 
+  // Asegurar Issue diario antes de escribir memoria (para referenciarlo)
   const issueInfo = await ensureDailyIssue();
+
+  // Persistir el diario en memory/diary/DIARY-XXXX.md
+  // Sin esto, el dashboard siempre muestra "sin diario todavía"
+  const diaryId = nextId('diary');
+  const bullets = (diary.bullets || []).map((b) => `- ${b}`).join('\n');
+  const body = `# Diario — ${todayISO()}
+
+${bullets}
+
+**Highlight:** ${diary.highlight || 'quiet'}
+${diary.stuck_tasks?.length ? `**STUCK:** ${diary.stuck_tasks.join(', ')}\n` : ''}${diary.new_lessons?.length ? `**Lecciones nuevas:** ${diary.new_lessons.join(', ')}\n` : ''}${diary.tomorrow_hint ? `**Pendiente para mañana:** ${diary.tomorrow_hint}\n` : ''}
+_Issue: #${issueInfo.number} — generado por el agente diarist._
+`;
+  await writeMemory('diary', diaryId, {
+    id: diaryId,
+    type: 'diary',
+    date: todayISO(),
+    headline: diary.headline,
+    highlight: diary.highlight || 'quiet',
+    stuck_tasks: diary.stuck_tasks || [],
+    new_lessons: diary.new_lessons || [],
+    tomorrow_hint: diary.tomorrow_hint || '',
+    tasks_count: day.tasks.length,
+    episodes_count: day.episodes.length,
+    lessons_count: day.lessons.length,
+    issue_number: issueInfo.number || 0,
+    created: new Date().toISOString(),
+  }, body);
+  console.log(`[diarist] diario guardado como ${diaryId}`);
+
   await postDiaryComment(issueInfo, diary);
 
   console.log('[diarist] fin');

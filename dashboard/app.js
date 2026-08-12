@@ -8,9 +8,6 @@ const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 const params = new URLSearchParams(location.search);
 const DEMO_MODE = params.get('demo') === '1' || params.get('source') === 'preview';
 
-// Voice module — cargado globalmente desde voice.js antes que app.js
-var voice = (typeof window.voice !== 'undefined') ? window.voice : { isSupported: false, listening: false, speaking: false, speak: function(){}, stopSpeaking: function(){}, startListening: function(){}, stopListening: function(){} };
-
 // ─── DEMO DATA (rich, realistic) ───
 const DEMO = {
   stats: {
@@ -62,8 +59,8 @@ const DEMO = {
   },
   agents: [
     { name: 'orchestrator', icon: '🎭', role: 'Dispatcher principal', turns: 12, status: 'active' },
-    { name: 'analyst', icon: '🔍', role: 'Audita repos externos', turns: 5, status: 'active' },
-    { name: 'code', icon: '⚙️', role: 'Arregla bugs en código', turns: 28, status: 'active' },
+    { name: 'analyst', icon: '🔍', role: 'Audita repos externos en busca de bugs y mejoras', turns: 5, status: 'active' },
+    { name: 'code', icon: '⚙️', role: 'Arregla bugs en código externo', turns: 28, status: 'active' },
     { name: 'research', icon: '🔬', role: 'Investiga causa raíz', turns: 9, status: 'active' },
     { name: 'test', icon: '✅', role: 'Verificador independiente', turns: 18, status: 'active' },
     { name: 'security', icon: '🛡️', role: 'Audita diffs y secretos', turns: 4, status: 'idle' },
@@ -72,13 +69,8 @@ const DEMO = {
     { name: 'budget', icon: '💰', role: 'Vigila cuota de tokens', turns: 24, status: 'active' },
     { name: 'diarist', icon: '📅', role: 'Diario nocturno', turns: 7, status: 'idle' },
     { name: 'self_improver', icon: '🤖', role: 'Auto-mejora por PR', turns: 2, status: 'idle' },
-    { name: 'inventory', icon: '📦', role: 'Compara inventarios', turns: 3, status: 'active' },
+    { name: 'inventory', icon: '📦', role: 'Compara inventarios entre repos', turns: 3, status: 'active' },
     { name: 'chat', icon: '💬', role: 'Interfaz conversacional', turns: 15, status: 'active' },
-    { name: 'curator', icon: '🧹', role: 'Limpia y mantiene memoria', turns: 1, status: 'idle' },
-    { name: 'qa', icon: '🧪', role: 'Quality Assurance continuo', turns: 6, status: 'idle' },
-    { name: 'refactor', icon: '🔧', role: 'Deuda técnica proactiva', turns: 2, status: 'idle' },
-    { name: 'translator', icon: '🌐', role: 'Internacionalización', turns: 3, status: 'idle' },
-    { name: 'onboarding', icon: '👋', role: 'Tutor interactivo', turns: 1, status: 'idle' },
   ],
 };
 
@@ -96,8 +88,6 @@ function buildDemoIndex() {
   return idx;
 }
 DEMO.index = buildDemoIndex();
-// Expose on window for tiendamax.js overlay (which reads window.DEMO / window.state)
-window.DEMO = DEMO;
 
 // ─── Data path resolver ───
 // En producción (GitHub Pages): los datos están en ./data/memory/ y ./data/tasks/
@@ -183,9 +173,119 @@ const state = {
   data: null,
   chatHistory: [],
   activityPollInterval: null,
+  // Credenciales GitHub: se cargan desde localStorage al iniciar
+  get token() { return localStorage.getItem('agent-brain-pat') || ''; },
+  get repo() { return localStorage.getItem('agent-brain-repo') || ''; },
 };
-// Expose on window for tiendamax.js overlay (which reads window.state)
-window.state = state;
+
+// ─── Settings modal ───
+function loadCredentialsIntoSettings() {
+  const repoInput = $('#settings-repo');
+  const patInput = $('#settings-pat');
+  const statusText = $('#settings-status-text');
+  if (repoInput) repoInput.value = state.repo || '';
+  if (patInput) {
+    // Mostrar máscara si ya hay PAT guardado, vacío si no
+    patInput.value = '';
+    patInput.placeholder = state.token ? '•••••••••••••••••••••••• (guardado, deja vacío para mantener)' : '[REDACTED:github_token]';
+  }
+  if (statusText) {
+    if (state.token && state.repo) {
+      statusText.innerHTML = `✓ Configurado — repo: <code>${state.repo}</code>`;
+      statusText.parentElement.style.borderColor = '#16a34a';
+    } else {
+      const missing = [];
+      if (!state.repo) missing.push('repo');
+      if (!state.token) missing.push('PAT');
+      statusText.innerHTML = `⚠ Falta: ${missing.join(' y ')}. Sin esto no puedes lanzar análisis ni crear Issues.`;
+      statusText.parentElement.style.borderColor = '#ca8a04';
+    }
+  }
+}
+
+function openSettings() {
+  const modal = $('#settings-modal');
+  if (!modal) return;
+  loadCredentialsIntoSettings();
+  modal.hidden = false;
+  // Focus al primer input vacío
+  setTimeout(() => {
+    const repoInput = $('#settings-repo');
+    const patInput = $('#settings-pat');
+    if (repoInput && !repoInput.value) repoInput.focus();
+    else if (patInput) patInput.focus();
+  }, 50);
+}
+
+function closeSettings() {
+  const modal = $('#settings-modal');
+  if (modal) modal.hidden = true;
+}
+
+async function saveSettings() {
+  const repoInput = $('#settings-repo');
+  const patInput = $('#settings-pat');
+  const saveBtn = $('#settings-save');
+  const saveLabel = saveBtn?.querySelector('span');
+  const originalLabel = saveLabel?.textContent;
+
+  if (saveBtn) saveBtn.disabled = true;
+  if (saveLabel) saveLabel.textContent = 'Verificando…';
+
+  try {
+    const repo = (repoInput?.value || '').trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\/$/, '').replace(/\.git$/, '');
+    const pat = (patInput?.value || '').trim();
+
+    // Validar formato repo
+    if (repo && !/^[a-z0-9_-]+\/[a-z0-9_.-]+$/i.test(repo)) {
+      throw new Error('Formato de repo inválido. Debe ser owner/name.');
+    }
+
+    // Si hay nuevo PAT, validar con la API
+    let patToStore = pat;
+    if (pat) {
+      const res = await fetch('https://api.github.com/user', {
+        headers: {
+          'Authorization': `Bearer ${pat}`,
+          'Accept': 'application/vnd.github+json',
+        },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(`PAT inválido (${res.status}): ${err.message || 'verifica el token'}`);
+      }
+      const user = await res.json();
+      // Verificar que el PAT tiene acceso al repo
+      if (repo) {
+        const repoRes = await fetch(`https://api.github.com/repos/${repo}`, {
+          headers: {
+            'Authorization': `Bearer ${pat}`,
+            'Accept': 'application/vnd.github+json',
+          },
+        });
+        if (!repoRes.ok) {
+          throw new Error(`No se pudo acceder al repo ${repo} (${repoRes.status}). Verifica que el PAT tenga scope "repo".`);
+        }
+      }
+      toast(`✓ PAT válido — usuario: ${user.login}`, '✓');
+    } else if (!state.token) {
+      throw new Error('Necesitas pegar un PAT válido.');
+    }
+
+    // Guardar
+    if (repo) localStorage.setItem('agent-brain-repo', repo);
+    if (patToStore) localStorage.setItem('agent-brain-pat', patToStore);
+
+    loadCredentialsIntoSettings();
+    closeSettings();
+    toast('Configuración guardada ✓', '✓');
+  } catch (err) {
+    toast(`Error: ${err.message}`, '⚠️');
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+    if (saveLabel) saveLabel.textContent = originalLabel;
+  }
+}
 
 // ─── Toast ───
 function toast(text, icon = '', actionLabel = null, onAction = null) {
@@ -206,11 +306,6 @@ function toast(text, icon = '', actionLabel = null, onAction = null) {
 // ─── Navigation ───
 function switchView(name) {
   state.currentView = name;
-  // BUGFIX (audit #1.1): Render dynamic views BEFORE toggling is-active,
-  // otherwise the newly created #view-settings / #view-graph never receive is-active
-  // and stay display:none.
-  if (name === 'settings' && window.renderSettings) window.renderSettings();
-  if (name === 'graph' && window.renderGraphView) window.renderGraphView();
   $$('.view').forEach(v => v.classList.toggle('is-active', v.id === `view-${name}`));
   $$('.nav__item').forEach(b => b.classList.toggle('is-active', b.dataset.target === name));
   $$('.bottom-nav__item').forEach(b => b.classList.toggle('is-active', b.dataset.target === name));
@@ -221,14 +316,12 @@ function switchView(name) {
     lessons: ['Lecciones', 'Aprendizajes activas'],
     diary: ['Diario', 'Resumen nocturno auto-generado'],
     budget: ['Presupuesto', 'Cuota diaria de tokens y minutos'],
-    agents: ['Agentes', '18 agentes especializados'],
+    agents: ['Agentes', '12 agentes especializados'],
     memory: ['Memoria', 'Todos los registros'],
     chat: ['Chat', 'Habla con tu sistema'],
     activity: ['Actividad', 'Feed en tiempo real'],
     metrics: ['Métricas', 'Tendencias del sistema'],
     inventory: ['Inventario', 'Compara productos entre repos'],
-    settings: ['Settings', 'Configuración del sistema'],
-    graph: ['Grafo', 'Red de memorias'],
   };
   const [title, sub] = titles[name] || [name, ''];
   $('#view-title').textContent = title;
@@ -238,10 +331,6 @@ function switchView(name) {
   $('#sidebar-overlay').hidden = true;
   // Scroll to top
   $('#content').scrollTop = 0;
-  // Notify TiendaMax overlay (if loaded)
-  if (window.tiendaMax && typeof window.tiendaMax.onViewChange === 'function') {
-    window.tiendaMax.onViewChange(name);
-  }
 }
 
 // ─── Render: hero + stats ───
@@ -847,9 +936,32 @@ function attachEvents() {
     analyzeSubmit.disabled = true;
   };
 
-  analyzeBtn?.addEventListener('click', openAnalyzeModal);
-  fabAnalyze?.addEventListener('click', openAnalyzeModal);
+  analyzeBtn?.addEventListener('click', () => {
+    // Verificar credenciales antes de abrir Analyze
+    if (!state.token || !state.repo) {
+      toast('Configura tu PAT y repo primero', '⚙️', 'Abrir Settings', openSettings);
+      openSettings();
+      return;
+    }
+    openAnalyzeModal();
+  });
+  fabAnalyze?.addEventListener('click', () => {
+    if (!state.token || !state.repo) {
+      toast('Configura tu PAT y repo primero', '⚙️', 'Abrir Settings', openSettings);
+      openSettings();
+      return;
+    }
+    openAnalyzeModal();
+  });
   $$('#analyze-modal [data-close]').forEach(el => el.addEventListener('click', closeAnalyzeModal));
+
+  // Settings modal
+  $('#settings-btn')?.addEventListener('click', openSettings);
+  $('#settings-save')?.addEventListener('click', saveSettings);
+  $$('#settings-modal [data-close]').forEach(el => el.addEventListener('click', closeSettings));
+  // Enter en inputs guarda
+  $('#settings-pat')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSettings(); });
+  $('#settings-repo')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveSettings(); });
 
   // Validar URL mientras se escribe
   analyzeUrl.addEventListener('input', (e) => {
@@ -871,17 +983,19 @@ function attachEvents() {
     analyzeSubmit.querySelector('span').textContent = 'Creando Issue…';
 
     try {
-      // BUGFIX (audit #1.2): state.repo was never assigned — use localStorage fallback.
-      const repo = state.repo || localStorage.getItem('agent-brain-repo') || localStorage.getItem('agent-brain-target-repos');
-      if (!repo) {
-        throw new Error('Configura tu repo en Settings (agent-brain-repo) antes de lanzar análisis.');
+      // Verificar credenciales antes de llamar a la API
+      if (!state.repo) {
+        throw new Error('Configura tu repo en Settings (botón ⚙️) antes de lanzar análisis.');
       }
-      const token = state.token || localStorage.getItem('agent-brain-pat') || '';
+      if (!state.token) {
+        throw new Error('Configura tu PAT en Settings (botón ⚙️) antes de lanzar análisis.');
+      }
+
       // Crear Issue vía GitHub API
-      const res = await fetch(`https://api.github.com/repos/${repo}/issues`, {
+      const res = await fetch(`https://api.github.com/repos/${state.repo}/issues`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${state.token}`,
           'Accept': 'application/vnd.github+json',
           'Content-Type': 'application/json',
         },
@@ -894,6 +1008,37 @@ function attachEvents() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          throw new Error('PAT inválido o expirado. Abre Settings (⚙️) y actualízalo.');
+        }
+        if (res.status === 403 && err.message?.includes('scope')) {
+          throw new Error('Tu PAT no tiene scope "repo". Crea uno nuevo con permiso repo.');
+        }
+        if (res.status === 404) {
+          throw new Error(`Repo "${state.repo}" no encontrado o sin permiso. Verifica en Settings (⚙️).`);
+        }
+        if (res.status === 422 && err.message?.includes('label')) {
+          // Reintentar sin labels si no existe la label agent-task
+          const res2 = await fetch(`https://api.github.com/repos/${state.repo}/issues`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${state.token}`,
+              'Accept': 'application/vnd.github+json',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ title, body }),
+          });
+          if (!res2.ok) {
+            const err2 = await res2.json().catch(() => ({}));
+            throw new Error(err2.message || `HTTP ${res2.status}`);
+          }
+          const issue2 = await res2.json();
+          closeAnalyzeModal();
+          toast(`Issue #${issue2.number} creado (sin label) — agente analyst trabajando`, '🔍', 'Ver Issue', () => {
+            window.open(issue2.html_url, '_blank');
+          });
+          return;
+        }
         throw new Error(err.message || `HTTP ${res.status}`);
       }
 
@@ -903,7 +1048,10 @@ function attachEvents() {
         window.open(issue.html_url, '_blank');
       });
     } catch (err) {
-      toast(`Error creando Issue: ${err.message}. Necesitas un PAT configurado.`, '⚠️');
+      const msg = err.message.includes('Settings')
+        ? err.message
+        : `Error creando Issue: ${err.message}`;
+      toast(msg, '⚠️', 'Abrir Settings', openSettings);
       analyzeSubmit.disabled = false;
       analyzeSubmit.querySelector('span').textContent = 'Lanzar análisis';
     }
@@ -955,76 +1103,6 @@ function attachEvents() {
       sendChatMessage(q);
     });
   });
-
-  // ─── Voice (Web Speech API) ───
-  state.autoSpeak = false;
-  const micBtn = $('#chat-mic');
-  const speakBtn = $('#chat-speak');
-
-  if (micBtn) {
-    if (!voice.isSupported) {
-      micBtn.style.opacity = '0.4';
-      micBtn.title = 'Voz no soportada en este navegador. Usa Chrome o Edge.';
-    }
-    micBtn.addEventListener('click', () => {
-      if (!voice.isSupported) {
-        toast('Voz no soportada. Usa Chrome o Edge.', '🎤');
-        return;
-      }
-      if (voice.listening) {
-        voice.stopListening();
-        micBtn.classList.remove('is-listening');
-      } else {
-        micBtn.classList.add('is-listening');
-        voice.startListening(
-          (transcript, isFinal) => {
-            chatInput.value = transcript;
-            if (isFinal) {
-              micBtn.classList.remove('is-listening');
-              chatInput.focus();
-            }
-          },
-          (err) => {
-            micBtn.classList.remove('is-listening');
-            toast(`Error de voz: ${err.message}`, '🎤');
-          },
-          () => {
-            micBtn.classList.remove('is-listening');
-            // Auto-enviar si hay texto
-            const text = chatInput.value.trim();
-            if (text) sendChatMessage(text);
-          }
-        );
-      }
-    });
-  }
-
-  if (speakBtn) {
-    speakBtn.addEventListener('click', () => {
-      if (voice.speaking) {
-        voice.stopSpeaking();
-        speakBtn.classList.remove('is-speaking');
-      } else {
-        // Leer el último mensaje del asistente
-        const messages = document.querySelectorAll('.chat__msg--assistant .chat__msg-body');
-        const lastMsg = messages[messages.length - 1];
-        if (lastMsg) {
-          const text = lastMsg.textContent.trim();
-          speakBtn.classList.add('is-speaking');
-          voice.speak(text, () => {
-            speakBtn.classList.remove('is-speaking');
-          });
-        } else {
-          toast('No hay mensaje para leer', '🔊');
-        }
-      }
-    });
-    // Toggle auto-speak con doble click
-    speakBtn.addEventListener('dblclick', () => {
-      state.autoSpeak = !state.autoSpeak;
-      toast(state.autoSpeak ? 'Auto-voz activada' : 'Auto-voz desactivada', '🔊');
-    });
-  }
 
   // ─── Inventory ───
   // Estado del modo (single vs compare)
@@ -1101,34 +1179,7 @@ function attachEvents() {
       const url = invInput.value.trim();
       const normalized = url.replace(/^https?:\/\/github\.com\//i, '').replace(/\/$/, '');
       localStorage.setItem('inv-repo-a', normalized);
-      // Ejecutar en background
-      const el = $('#inventory-result');
-      el.innerHTML = `
-        <div class="inv-loading">
-          <div class="inv-loading__spinner"></div>
-          <div class="inv-loading__text" id="inv-bg-text">Iniciando análisis...</div>
-          <div class="chat__progress-bar" style="width:300px;margin-top:8px"><div class="chat__progress-fill" id="inv-bg-progress" style="width:0%"></div></div>
-        </div>`;
-      const taskId = window.bgRunner.run('inventory', 'Analizando repo: ' + normalized, { repo: normalized });
-      window.bgRunner.on(taskId, (task) => {
-        const textEl = document.getElementById('inv-bg-text');
-        const progEl = document.getElementById('inv-bg-progress');
-        if (textEl && task.status === 'running') {
-          textEl.textContent = task.description;
-          if (progEl) progEl.style.width = task.progress + '%';
-        } else if (task.status === 'completed') {
-          // Usar el resultado del background runner para renderizar
-          if (task.result && task.result.report) {
-            renderInventoryReport(task.result.report);
-          } else if (task.result) {
-            // BUGFIX (audit #1.3): analyzeSingleRepoInventoryDirect was undefined.
-            // Use the existing analyzeSingleRepoInventory() which does the same job.
-            analyzeSingleRepoInventory(normalized);
-          }
-        } else if (task.status === 'error') {
-          el.innerHTML = `<div class="inv-empty"><div class="inv-empty__icon">❌</div><div class="inv-empty__text">Error: ${task.error}</div></div>`;
-        }
-      });
+      analyzeSingleRepoInventory(normalized);
     } else {
       const urlA = invInput.value.trim();
       const urlB = invInputB.value.trim();
@@ -1360,55 +1411,21 @@ async function loadAll() {
 }
 
 // ─── Chat ───
-function addChatMessage(role, content, agent = null, actionCards = []) {
+function addChatMessage(role, content) {
   const messages = $('#chat-messages');
+  // Quitar empty state si existe
   const empty = messages.querySelector('.chat__empty');
   if (empty) empty.remove();
 
   const msg = document.createElement('div');
-  const agentClass = agent ? ` chat__msg--agent-${agent}` : '';
-  msg.className = `chat__msg chat__msg--${role}${agentClass}`;
-  const avatar = role === 'user' ? '🧑' : (agent ? getAgentIcon(agent) : '🤖');
-  const agentLabel = agent ? `<div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px">${agent}</div>` : '';
-  const actionsHtml = actionCards?.length
-    ? `<div class="chat__action-cards">${actionCards.map(a => `<button class="chat__action-card chat__action-card--${a.style}" data-action="${a.action}">${a.label}</button>`).join('')}</div>`
-    : '';
+  msg.className = `chat__msg chat__msg--${role}`;
+  const avatar = role === 'user' ? '🧑' : '🤖';
   msg.innerHTML = `
     <div class="chat__msg-avatar">${avatar}</div>
-    <div class="chat__msg-body">
-      ${agentLabel}
-      ${escapeHtml(content).replace(/\n/g, '<br>')}
-      ${actionsHtml}
-    </div>
+    <div class="chat__msg-body">${escapeHtml(content).replace(/\n/g, '<br>')}</div>
   `;
   messages.appendChild(msg);
   messages.scrollTop = messages.scrollHeight;
-
-  // Attach action card listeners
-  if (actionCards?.length) {
-    msg.querySelectorAll('.chat__action-card').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const action = btn.dataset.action;
-        if (action === 'approve') {
-          toast('✓ Acción aprobada', '✓');
-        } else if (action === 'cancel') {
-          toast('✗ Acción cancelada', '✗');
-        } else {
-          toast('Modifica y reenvía', '✏️');
-        }
-      });
-    });
-  }
-}
-
-function getAgentIcon(agent) {
-  const icons = {
-    orchestrator: '🎭', chat: '💬', code: '⚙️', research: '🔬', test: '✅',
-    security: '🛡️', devil: '😈', learner: '📝', budget: '💰', diarist: '📅',
-    self_improver: '🤖', inventory: '📦', analyst: '🔍', curator: '🧹',
-    qa: '🧪', refactor: '🔧', translator: '🌐', onboarding: '👋',
-  };
-  return icons[agent] || '🤖';
 }
 
 function addTypingIndicator() {
@@ -1437,203 +1454,48 @@ async function sendChatMessage(question) {
   state.chatHistory.push({ role: 'user', content: question });
   $('#chat-input').value = '';
   $('#chat-send').disabled = true;
+  addTypingIndicator();
 
-  // Parsear comando (command center)
-  const cmd = window.streaming ? window.streaming.parseCommand(question) : { type: 'chat', payload: { message: question } };
-
-  // Si es help, responder inmediatamente
-  if (cmd.type === 'help') {
-    addChatMessage('assistant', window.streaming.getHelpText(), 'chat', []);
+  try {
+    // En modo demo, simular respuesta
+    if (DEMO_MODE) {
+      await new Promise(r => setTimeout(r, 1200));
+      removeTypingIndicator();
+      const demoAnswer = getDemoChatAnswer(question);
+      addChatMessage('assistant', demoAnswer);
+      state.chatHistory.push({ role: 'assistant', content: demoAnswer });
+    } else {
+      // En producción, llamar al workflow chat.yml vía repository_dispatch
+      const token = localStorage.getItem('agent-brain-pat') || state.token;
+      const repo = state.repo || localStorage.getItem('agent-brain-repo');
+      if (!token || !repo) {
+        removeTypingIndicator();
+        addChatMessage('assistant', '⚠️ Para usar el chat necesitas configurar tu PAT de GitHub. Ábrelo desde `setup.html` primero.');
+        return;
+      }
+      const res = await fetch(`https://api.github.com/repos/${repo}/dispatches`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          event_type: 'chat',
+          client_payload: { question, history: JSON.stringify(state.chatHistory.slice(-6)) },
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      removeTypingIndicator();
+      addChatMessage('assistant', '✓ Tu pregunta fue enviada al agente `chat`. La respuesta aparecerá como comentario en el último Issue abierto del repo (o créalo con label `chat`). Tarda ~30s en llegar.');
+    }
+  } catch (err) {
+    removeTypingIndicator();
+    addChatMessage('assistant', `❌ Error: ${err.message}`);
+  } finally {
     $('#chat-send').disabled = false;
     $('#chat-input').focus();
-    return;
   }
-
-  // Si es settings o inventory, navegar
-  if (cmd.type === 'settings') { switchView('settings'); $('#chat-send').disabled = false; return; }
-  if (cmd.type === 'inventory') { switchView('inventory'); $('#chat-send').disabled = false; return; }
-
-  // Si es analyze-repo, ejecutar en background
-  if (cmd.type === 'analyze-repo') {
-    switchView('inventory');
-    $('#inv-repo-url').value = cmd.payload.repo;
-    setTimeout(() => $('#compare-inventory-btn')?.click(), 300);
-    $('#chat-send').disabled = false;
-    return;
-  }
-
-  // Si es compare-repos, ejecutar comparación
-  if (cmd.type === 'compare-repos') {
-    switchView('inventory');
-    setTimeout(() => {
-      document.querySelector('[data-mode=compare]')?.click();
-      $('#inv-repo-a').value = cmd.payload.repoA;
-      $('#inv-repo-b').value = cmd.payload.repoB;
-      setTimeout(() => $('#compare-inventory-btn')?.click(), 200);
-    }, 200);
-    $('#chat-send').disabled = false;
-    return;
-  }
-
-  // Si es create-task, crear Issue vía background runner
-  if (cmd.type === 'create-task') {
-    const taskId = window.bgRunner.run('create-task', 'Creando tarea: ' + cmd.payload.goal, cmd.payload);
-    const progressMsgId = 'prog-' + Date.now();
-    addProgressMessage(progressMsgId, 'Creando tarea...');
-    window.bgRunner.on(taskId, (task) => {
-      if (task.status === 'running') {
-        updateProgressMessage(progressMsgId, task.description, task.progress);
-      } else if (task.status === 'completed') {
-        removeProgressMessage(progressMsgId);
-        addChatMessage('assistant', '✅ Tarea creada: **' + cmd.payload.goal + '**\n\nEl agente `orchestrator` la ha recibido y está trabajando.', 'orchestrator', []);
-      } else if (task.status === 'error') {
-        removeProgressMessage(progressMsgId);
-        addChatMessage('assistant', '❌ Error: ' + task.error, 'chat', []);
-      }
-      $('#chat-send').disabled = false;
-      $('#chat-input').focus();
-    });
-    return;
-  }
-
-  // Chat normal: streaming palabra por palabra
-  const progressMsgId = 'prog-' + Date.now();
-  addProgressMessage(progressMsgId, 'Conectando...');
-
-  // Crear mensaje del asistente vacío que se irá llenando
-  const messages = $('#chat-messages');
-  const empty = messages.querySelector('.chat__empty');
-  if (empty) empty.remove();
-
-  const assistantMsg = document.createElement('div');
-  assistantMsg.className = 'chat__msg chat__msg--assistant chat__msg--streaming';
-  assistantMsg.innerHTML = `
-    <div class="chat__msg-avatar">🤖</div>
-    <div class="chat__msg-body"><span class="chat__streaming-cursor"></span></div>
-  `;
-  messages.appendChild(assistantMsg);
-  messages.scrollTop = messages.scrollHeight;
-
-  const taskId = window.bgRunner.run('chat', 'Procesando: "' + question.slice(0, 40) + (question.length > 40 ? '...' : '') + '"', {
-    message: question, history: state.chatHistory.slice(-6),
-  });
-
-  let useStreaming = false;
-
-  window.bgRunner.on(taskId, (task) => {
-    if (task.status === 'running') {
-      updateProgressMessage(progressMsgId, task.description, task.progress);
-    } else if (task.status === 'completed') {
-      removeProgressMessage(progressMsgId);
-      const result = task.result;
-      const agent = result?.agent || 'chat';
-      const text = result?.text || result?.response || '(sin respuesta)';
-
-      // Llenar el mensaje del asistente con streaming palabra por palabra
-      streamTextIntoMessage(assistantMsg, text, agent, result?.actionCards);
-      state.chatHistory.push({ role: 'assistant', content: text });
-
-      // Guardar historial persistente
-      if (window.chatHistory) window.chatHistory.save(state.chatHistory);
-
-      if (state.autoSpeak && window.voice) window.voice.speak(text);
-    } else if (task.status === 'error') {
-      removeProgressMessage(progressMsgId);
-      if (assistantMsg.parentNode) assistantMsg.remove();
-      addChatMessage('assistant', '❌ Error: ' + task.error, 'chat', []);
-    }
-    $('#chat-send').disabled = false;
-    $('#chat-input').focus();
-  });
-}
-
-function streamTextIntoMessage(msgEl, text, agent, actionCards) {
-  const body = msgEl.querySelector('.chat__msg-body');
-  if (!body) return;
-
-  // Actualizar avatar y clase con el agente correcto
-  const avatar = msgEl.querySelector('.chat__msg-avatar');
-  if (avatar) avatar.textContent = getAgentIcon(agent);
-  msgEl.className = `chat__msg chat__msg--assistant chat__msg--agent-${agent}`;
-
-  // Limpiar cursor
-  body.innerHTML = '';
-
-  // Stream palabra por palabra
-  const words = text.split(/(\s+)/);
-  let full = '';
-  let i = 0;
-
-  const interval = setInterval(() => {
-    if (i >= words.length) {
-      clearInterval(interval);
-      // Añadir action cards al final
-      if (actionCards?.length) {
-        const actionsDiv = document.createElement('div');
-        actionsDiv.className = 'chat__action-cards';
-        actionsDiv.innerHTML = actionCards.map(a => `<button class="chat__action-card chat__action-card--${a.style}" data-action="${a.action}">${a.label}</button>`).join('');
-        body.appendChild(actionsDiv);
-        actionsDiv.querySelectorAll('.chat__action-card').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const action = btn.dataset.action;
-            toast(action === 'approve' ? '✓ Aprobado' : action === 'cancel' ? '✗ Cancelado' : 'Modifica y reenvía', action === 'approve' ? '✓' : '⚙️');
-          });
-        });
-      }
-      msgEl.classList.remove('chat__msg--streaming');
-      const messages = $('#chat-messages');
-      if (messages) messages.scrollTop = messages.scrollHeight;
-      return;
-    }
-    full += words[i];
-    body.innerHTML = escapeHtml(full).replace(/\n/g, '<br>') + '<span class="chat__streaming-cursor"></span>';
-    i++;
-    const messages = $('#chat-messages');
-    if (messages) messages.scrollTop = messages.scrollHeight;
-  }, 25);
-}
-
-function addProgressMessage(id, text) {
-  const messages = $('#chat-messages');
-  const empty = messages.querySelector('.chat__empty');
-  if (empty) empty.remove();
-  const msg = document.createElement('div');
-  msg.id = id;
-  msg.className = 'chat__msg chat__msg--progress';
-  msg.innerHTML = `
-    <div class="chat__msg-avatar">⏳</div>
-    <div class="chat__msg-body">
-      <div class="chat__progress-text">${text}</div>
-      <div class="chat__progress-bar"><div class="chat__progress-fill" style="width:0%"></div></div>
-    </div>
-  `;
-  messages.appendChild(msg);
-  messages.scrollTop = messages.scrollHeight;
-}
-
-function updateProgressMessage(id, text, progress) {
-  const msg = document.getElementById(id);
-  if (!msg) return;
-  const textEl = msg.querySelector('.chat__progress-text');
-  const fillEl = msg.querySelector('.chat__progress-fill');
-  if (textEl) textEl.textContent = text;
-  if (fillEl) fillEl.style.width = progress + '%';
-  const messages = $('#chat-messages');
-  if (messages) messages.scrollTop = messages.scrollHeight;
-}
-
-function removeProgressMessage(id) {
-  const msg = document.getElementById(id);
-  if (msg) msg.remove();
-}
-
-function detectAgentFromQuestion(question) {
-  const q = question.toLowerCase();
-  if (q.match(/\b(crear|nueva?|abrir)\b.*\b(tarea|bug|issue)\b/) || q.match(/\b(investigar|arreglar|fix)\b/)) return 'orchestrator';
-  if (q.match(/\b(stuck|atascad|bloque)\b/)) return 'research';
-  if (q.match(/\b(audit|seguridad|secreto|token)\b/)) return 'security';
-  if (q.match(/\b(inventar|producto|stock|agotad)\b/)) return 'inventory';
-  return 'chat';
 }
 
 function getDemoChatAnswer(question) {
@@ -1660,15 +1522,14 @@ function renderActivity() {
   const items = [];
 
   // Episodios (intentos de agentes)
-  // SECURITY FIX (audit #4): escape all interpolated memory fields to prevent XSS
   const episodes = Object.entries(state.data?.index || {})
     .filter(([id, m]) => m.type === 'episode')
     .map(([id, m]) => ({
       id,
       type: 'episode',
       icon: '⚙️',
-      title: `Agente <code>${escapeHtml(m.agent || '?')}</code> — intento ${escapeHtml(String(m.attempt || '?'))} de ${escapeHtml(String(m.task_id || '?'))}`,
-      meta: `ruta: ${escapeHtml(String(m.result || '?'))}`,
+      title: `Agente <code>${m.agent || '?'}</code> — intento ${m.attempt} de ${m.task_id || '?'}`,
+      meta: `ruta: ${m.result || '?'}`,
       time: m.created,
     }));
 
@@ -1679,8 +1540,8 @@ function renderActivity() {
       id,
       type: 'error',
       icon: '🐞',
-      title: `Error registrado: <code>${escapeHtml(id)}</code> — ${escapeHtml(m.title || '(sin título)')}`,
-      meta: `confidence: ${escapeHtml(String(m.confidence ?? '?'))} · ${m.stale ? '⚠ stale' : 'ok'}`,
+      title: `Error registrado: <code>${id}</code> — ${m.title || '(sin título)'}`,
+      meta: `confidence: ${m.confidence} · ${m.stale ? '⚠ stale' : 'ok'}`,
       time: m.created || m.updated,
     }));
 
@@ -1691,8 +1552,8 @@ function renderActivity() {
       id,
       type: 'lesson',
       icon: '💡',
-      title: `Lección propuesta: <code>${escapeHtml(id)}</code> — ${escapeHtml(m.title || '')}`,
-      meta: `previno ${escapeHtml(String(m.times_prevented_failure || 0))} fallos`,
+      title: `Lección propuesta: <code>${id}</code> — ${m.title || ''}`,
+      meta: `previno ${m.times_prevented_failure || 0} fallos`,
       time: m.created,
     }));
 
@@ -1703,8 +1564,8 @@ function renderActivity() {
       id,
       type: 'decision',
       icon: '📋',
-      title: `Decisión: <code>${escapeHtml(id)}</code> — ${escapeHtml(m.title || '')}`,
-      meta: `scope: ${escapeHtml(String(m.scope || '?'))}`,
+      title: `Decisión: <code>${id}</code> — ${m.title || ''}`,
+      meta: `scope: ${m.scope || '?'}`,
       time: m.created,
     }));
 
@@ -1730,16 +1591,7 @@ function renderActivity() {
     return;
   }
 
-  // Timeline horizontal (últimas 24h)
-  const now = Date.now();
-  const dayAgo = now - 24 * 60 * 60 * 1000;
-  const recentItems = items.filter(i => new Date(i.time || 0).getTime() > dayAgo);
-  const timelineHtml = renderActivityTimeline(recentItems, now);
-
-  // Heatmap de actividad por hora
-  const heatmapHtml = renderActivityHeatmap(items);
-
-  list.innerHTML = timelineHtml + heatmapHtml + items.slice(0, 30).map(item => {
+  list.innerHTML = items.slice(0, 30).map(item => {
     const timeStr = formatRelativeTime(item.time);
     return `
       <div class="activity-item">
@@ -1751,80 +1603,6 @@ function renderActivity() {
         <div class="activity-item__time">${timeStr}</div>
       </div>`;
   }).join('');
-}
-
-// ─── Timeline horizontal de actividad ───
-function renderActivityTimeline(items, now) {
-  if (!items.length) return '';
-  const hours = 24;
-  const slots = Array.from({ length: hours }, () => []);
-  for (const item of items) {
-    const ts = new Date(item.time || 0).getTime();
-    const hoursAgo = Math.floor((now - ts) / (60 * 60 * 1000));
-    if (hoursAgo >= 0 && hoursAgo < hours) {
-      slots[hours - 1 - hoursAgo].push(item);
-    }
-  }
-  const maxCount = Math.max(...slots.map(s => s.length), 1);
-  const colors = { episode: '#6366f1', error: '#ef4444', lesson: '#a855f7', decision: '#3b82f6' };
-
-  return `
-    <div class="panel" style="margin-bottom: var(--s-4)">
-      <div class="panel__header"><h3 class="panel__title">📅 Timeline (24h)</h3></div>
-      <div class="panel__body">
-        <div class="timeline-bar">
-          ${slots.map((s, i) => {
-            const h = (s.length / maxCount) * 100;
-            const color = s.length ? colors[s[0].type] || '#7d8590' : 'var(--bg-elev-3)';
-            return `<div class="timeline-slot" title="${s.length} eventos · hace ${hours - 1 - i}h">
-              <div class="timeline-slot__bar" style="height:${Math.max(h, 2)}%;background:${color};opacity:${s.length ? 0.8 : 0.3}"></div>
-              <div class="timeline-slot__label">${hours - 1 - i}h</div>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>
-    </div>`;
-}
-
-// ─── Heatmap de actividad por hora del día ───
-function renderActivityHeatmap(items) {
-  // Contar actividad por hora del día (0-23) para los últimos 7 días
-  const days = 7;
-  const grid = Array.from({ length: days }, () => Array(24).fill(0));
-  const now = new Date();
-  for (const item of items) {
-    const d = new Date(item.time || 0);
-    const dayDiff = Math.floor((now.setHours(0,0,0,0) - new Date(d).setHours(0,0,0,0)) / (24 * 60 * 60 * 1000));
-    if (dayDiff >= 0 && dayDiff < days) {
-      grid[dayDiff][d.getHours()]++;
-    }
-  }
-  const max = Math.max(...grid.flat(), 1);
-  const dayLabels = ['Hoy', 'Ayer', '-2d', '-3d', '-4d', '-5d', '-6d'];
-
-  return `
-    <div class="panel" style="margin-bottom: var(--s-4)">
-      <div class="panel__header"><h3 class="panel__title">🔥 Mapa de calor de actividad</h3></div>
-      <div class="panel__body" style="overflow-x:auto">
-        <div class="heatmap-grid-activity">
-          <div class="heatmap-row heatmap-row--header">
-            <div class="heatmap-cell-label"></div>
-            ${Array.from({length:24}, (_,h) => `<div class="heatmap-hour">${h%6===0?h:''}</div>`).join('')}
-          </div>
-          ${grid.map((day, di) => `
-            <div class="heatmap-row">
-              <div class="heatmap-cell-label">${dayLabels[di]}</div>
-              ${day.map((count, h) => {
-                const intensity = count / max;
-                const r = 99, g = Math.round(102 + (1-intensity)*100), b = 241;
-                const bg = count > 0 ? `rgba(${r},${g},${b},${0.2+intensity*0.8})` : 'var(--bg-elev-2)';
-                return `<div class="heatmap-cell-act" style="background:${bg}" title="${dayLabels[di]} ${h}:00 — ${count} eventos"></div>`;
-              }).join('')}
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    </div>`;
 }
 
 function formatRelativeTime(iso) {
@@ -2524,189 +2302,8 @@ async function init() {
   registerSW();
   await loadAll();
   startAutoPoll();
-
-  // Cargar historial de chat persistente
-  if (window.chatHistory) {
-    const saved = window.chatHistory.load();
-    if (saved.length > 0) {
-      state.chatHistory = saved;
-      // Renderizar mensajes guardados
-      for (const msg of saved) {
-        if (msg.role === 'user') addChatMessage('user', msg.content);
-        else if (msg.role === 'assistant') addChatMessage('assistant', msg.content, 'chat', []);
-      }
-    }
-  }
-
-  // Inicializar realtime si Supabase está configurado
-  if (window.streaming && window.streaming.initRealtime) window.streaming.initRealtime();
-
-  // Cargar modo compacto
-  if (localStorage.getItem('agent-brain-compact') === '1') document.body.classList.add('compact-mode');
-
-  // Cargar tema automático del sistema
-  if (window.matchMedia) {
-    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {
-      if (localStorage.getItem('agent-brain-theme') === null) {
-        document.documentElement.dataset.theme = e.matches ? 'light' : 'dark';
-      }
-    });
-  }
-
-  // Inicializar pull-to-refresh en móvil
-  initPullToRefresh();
-
-  // Inicializar swipe gestures
-  initSwipeGestures();
-
-  // Inicializar haptic feedback
-  initHaptics();
-
-  // Inicializar background sidebar
-  initBgSidebar();
-
-  // Auth UI update
-  if (window.updateAuthUI) window.updateAuthUI();
-}
-
-// ─── Pull-to-refresh ───
-function initPullToRefresh() {
-  let pullStart = 0;
-  let pulling = false;
-  const indicator = document.createElement('div');
-  indicator.className = 'pull-refresh';
-  indicator.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
-  document.body.appendChild(indicator);
-
-  document.getElementById('content')?.addEventListener('touchstart', (e) => {
-    if (document.getElementById('content').scrollTop === 0) {
-      pullStart = e.touches[0].clientY;
-      pulling = true;
-    }
-  });
-
-  document.getElementById('content')?.addEventListener('touchmove', (e) => {
-    if (!pulling) return;
-    const diff = e.touches[0].clientY - pullStart;
-    if (diff > 60 && diff < 120) {
-      indicator.classList.add('visible');
-    }
-  });
-
-  document.getElementById('content')?.addEventListener('touchend', async (e) => {
-    if (!pulling) return;
-    pulling = false;
-    const diff = (e.changedTouches[0]?.clientY || 0) - pullStart;
-    if (diff > 80) {
-      indicator.classList.add('refreshing');
-      haptic('medium');
-      await loadAll();
-      toast('Datos actualizados', '✓');
-      setTimeout(() => { indicator.classList.remove('refreshing', 'visible'); }, 600);
-    } else {
-      indicator.classList.remove('visible');
-    }
-  });
-}
-
-// ─── Swipe gestures entre vistas ───
-function initSwipeGestures() {
-  let touchStartX = 0;
-  let touchStartY = 0;
-  const views = ['overview','tasks','errors','lessons','diary','budget','agents','memory','chat','activity','metrics','inventory','graph','settings'];
-  const content = document.getElementById('content');
-  if (!content) return;
-
-  content.addEventListener('touchstart', (e) => {
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-  }, { passive: true });
-
-  content.addEventListener('touchend', (e) => {
-    const dx = e.changedTouches[0].clientX - touchStartX;
-    const dy = e.changedTouches[0].clientY - touchStartY;
-    if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx)) return; // no es swipe horizontal
-    const currentIdx = views.indexOf(state.currentView);
-    if (dx > 0 && currentIdx > 0) {
-      switchView(views[currentIdx - 1]);
-      haptic('light');
-    } else if (dx < 0 && currentIdx < views.length - 1) {
-      switchView(views[currentIdx + 1]);
-      haptic('light');
-    }
-  }, { passive: true });
-}
-
-// ─── Haptic feedback ───
-function haptic(intensity = 'light') {
-  if (!navigator.vibrate) return;
-  const patterns = { light: 10, medium: 30, heavy: 50, success: [10, 30, 10], error: [50, 30, 50] };
-  navigator.vibrate(patterns[intensity] || 10);
-}
-
-function initHaptics() {
-  // Haptic en clicks de nav
-  document.querySelectorAll('.nav__item, .bottom-nav__item').forEach(btn => {
-    btn.addEventListener('click', () => haptic('light'));
-  });
-  // Haptic en botones primarios
-  document.addEventListener('click', (e) => {
-    if (e.target.closest('.btn--primary')) haptic('medium');
-  });
-  // Haptic en FAB
-  document.getElementById('fab-analyze')?.addEventListener('click', () => haptic('medium'));
-}
-
-// ─── Background tasks sidebar ───
-function initBgSidebar() {
-  const sidebar = document.createElement('div');
-  sidebar.className = 'bg-sidebar';
-  sidebar.id = 'bg-sidebar';
-  sidebar.innerHTML = `
-    <div class="bg-sidebar__header">
-      <h3 class="bg-sidebar__title">⏳ Tareas en background</h3>
-      <button class="icon-btn icon-btn--ghost" id="bg-sidebar-close">×</button>
-    </div>
-    <div id="bg-sidebar-list"></div>
-  `;
-  document.body.appendChild(sidebar);
-  document.getElementById('bg-sidebar-close')?.addEventListener('click', () => sidebar.classList.remove('open'));
-
-  // Actualizar lista periódicamente
-  // BUGFIX (audit #1.5): track user-closed flag so the sidebar doesn't auto-reopen
-  // every second when the user dismissed it.
-  let bgSidebarUserClosed = false;
-  document.getElementById('bg-sidebar-close')?.addEventListener('click', () => {
-    bgSidebarUserClosed = true;
-    sidebar.classList.remove('open');
-  });
-  let lastActiveCount = 0;
-  setInterval(() => {
-    const list = document.getElementById('bg-sidebar-list');
-    if (!list || !window.bgRunner) return;
-    const active = window.bgRunner.getActive();
-    if (!active.length) {
-      list.innerHTML = '<div class="notif-empty">Sin tareas activas</div>';
-      sidebar.classList.remove('open');
-      bgSidebarUserClosed = false;
-      lastActiveCount = 0;
-      return;
-    }
-    // Only auto-open on the rising edge (0 → >0); respect user-closed state.
-    if (lastActiveCount === 0 && active.length > 0) {
-      bgSidebarUserClosed = false;
-    }
-    lastActiveCount = active.length;
-    if (!bgSidebarUserClosed && !sidebar.classList.contains('open')) {
-      sidebar.classList.add('open');
-    }
-    list.innerHTML = active.map(t => `
-      <div class="bg-task-item">
-        <div class="bg-task-item__desc">${escapeHtml(t.description || '')}</div>
-        <div class="bg-task-item__bar"><div class="bg-task-item__fill" style="width:${t.progress || 0}%"></div></div>
-      </div>
-    `).join('');
-  }, 1000);
+  // Pedir permiso de notificaciones silenciosamente (sin bloquear si se rechaza)
+  // El permiso se pide con contexto cuando el usuario usa Inventario
 }
 
 // ─── Inventory: search filter + CSV export ───

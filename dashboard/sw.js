@@ -5,7 +5,7 @@
 //   - Imágenes/iconos: cache-first permanente
 //   - memory/*.json: network-first (datos vivos, fallback a cache)
 
-const VERSION = 'v1.0.0';
+const VERSION = 'v1.0.1';
 const CACHE_STATIC = `agent-brain-static-${VERSION}`;
 const CACHE_DATA = `agent-brain-data-${VERSION}`;
 const CACHE_IMG = `agent-brain-img-${VERSION}`;
@@ -19,6 +19,7 @@ const STATIC_ASSETS = [
   './icon.svg',
   './icon-192.png',
   './icon-512.png',
+  './icon-maskable-192.png',
   './icon-maskable-512.png',
 ];
 
@@ -130,13 +131,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Default: try network, fallback to cache, then a safe error response.
-  // BUGFIX (audit #1.7): caches.match() resolves to undefined when nothing matches,
-  // which makes respondWith(undefined) throw "The FetchEvent handler did not respond".
+  // Default: try network, fallback to cache
   event.respondWith(
-    fetch(request).catch(() =>
-      caches.match(request).then(r => r || new Response('Offline', { status: 503, statusText: 'Offline' }))
-    )
+    fetch(request).catch(() => caches.match(request))
   );
 });
 
