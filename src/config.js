@@ -48,21 +48,6 @@ export const config = {
   geminiKey: process.env.GEMINI_API_KEY || '',
   geminiModel: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
 
-  // ── Inferencia local (Ollama / llama.cpp server) ──
-  // Endpoint compatible con OpenAI /v1/chat/completions
-  // Ejemplos:
-  //   - Ollama en PC:        http://localhost:11434/v1
-  //   - llama.cpp en móvil:  http://192.168.1.50:8080/v1
-  //   - Cloudflare Tunnel:   https://tu-tunnel.trycloudflare.com/v1
-  ollamaEndpoint: process.env.OLLAMA_ENDPOINT || '',
-  ollamaModel: process.env.OLLAMA_MODEL || 'qwen2.5:7b',
-  ollamaKey: process.env.OLLAMA_KEY || '', // opcional, solo si el server requiere auth
-
-  // ── Web search / web fetch ──
-  // Permite a los agentes acceder a internet. Sin coste (DuckDuckGo HTML + SearXNG público).
-  webEnabled: process.env.WEB_ENABLED !== 'false', // default true
-  webFetchMaxBytes: parseInt(process.env.WEB_FETCH_MAX_BYTES || '50000', 10),
-
   // ── Presupuesto ──
   budgetDailyTokens: parseInt(process.env.BUDGET_DAILY_TOKENS || '120000', 10),
   budgetDailyActionsMinutes: parseInt(process.env.BUDGET_DAILY_ACTIONS_MINUTES || '180', 10),

@@ -139,38 +139,6 @@ async function callGemini(model, messages, opts = {}) {
   return content;
 }
 
-// ── Llamada a Ollama / llama.cpp server (OpenAI-compatible) ──
-// Permite usar un modelo local como fallback o como proveedor principal.
-// El endpoint se configura con OLLAMA_ENDPOINT (ej: http://localhost:11434/v1).
-async function callOllama(model, messages, opts = {}) {
-  if (!config.ollamaEndpoint) throw new Error('Sin OLLAMA_ENDPOINT configurado');
-  const url = `${config.ollamaEndpoint.replace(/\/$/, '')}/chat/completions`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(config.ollamaKey ? { Authorization: `Bearer ${config.ollamaKey}` } : {}),
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: opts.temperature ?? 0.2,
-      max_tokens: opts.maxTokens ?? config.maxOutputTokens,
-      stream: false,
-      response_format: opts.jsonMode ? { type: 'json_object' } : undefined,
-    }),
-    signal: AbortSignal.timeout(config.inferenceTimeoutMs),
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    throw new Error(`Ollama ${res.status}: ${txt.slice(0, 300)}`);
-  }
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content ?? '';
-  recordUsage(`ollama:${model}`, messages.map((m) => m.content).join('\n'), content);
-  return content;
-}
-
 // ── Mock para DRY_RUN ──
 function mockResponse(messages, opts = {}) {
   const last = messages[messages.length - 1]?.content || '';
@@ -218,9 +186,6 @@ export async function complete(messages, opts = {}) {
   ];
   if (config.groqKey) chain.push({ kind: 'groq', model: config.groqModel });
   if (config.geminiKey) chain.push({ kind: 'gemini', model: config.geminiModel });
-  // Ollama va al final del chain: si todo lo cloud falla, probamos local.
-  // Si se quiere usar como primario, ponerlo en MODELS_PRIMARY con prefijo ollama/.
-  if (config.ollamaEndpoint) chain.push({ kind: 'ollama', model: config.ollamaModel });
 
   if (chain.length === 0) {
     throw new Error('No hay modelos configurados. Revisa .env o los secrets del workflow.');
@@ -233,8 +198,7 @@ export async function complete(messages, opts = {}) {
       let content;
       if (kind === 'github') content = await callGitHubModels(model, messages, opts);
       else if (kind === 'groq') content = await callGroq(model, messages, opts);
-      else if (kind === 'gemini') content = await callGemini(model, messages, opts);
-      else if (kind === 'ollama') content = await callOllama(model, messages, opts);
+      else content = await callGemini(model, messages, opts);
       if (i > 0) metrics.fallbacksTriggered++;
       return content;
     } catch (err) {

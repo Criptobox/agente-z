@@ -19,8 +19,7 @@ import { readFileSync, existsSync, readdirSync, writeFileSync, mkdirSync } from 
 import { resolve, join } from 'node:path';
 import { config, restApiHeaders } from '../config.js';
 import { complete } from '../models.js';
-import { listMemories, writeMemory, readMemory } from '../memory.js';
-import { parseAgentJSON } from '../utils/json.js';
+import { listMemories } from '../memory.js';
 
 // ── Carga lecciones listas para promover ──
 function loadPromotableLessons() {
@@ -222,7 +221,9 @@ async function main() {
     { jsonMode: true, temperature: 0.3 }
   );
 
-  const result = parseAgentJSON(raw);
+  const first = raw.indexOf('{');
+  const last = raw.lastIndexOf('}');
+  const result = JSON.parse(raw.slice(first, last + 1));
 
   if (result.empty || !result.proposals?.length) {
     console.log('[self_improver] no hay propuestas. Fin.');
@@ -235,22 +236,6 @@ async function main() {
     try {
       const prInfo = await createPullRequest(proposal);
       console.log(`[self_improver] PR creado:`, prInfo);
-
-      // Marcar la lección subyacente como promoted para evitar duplicar PR la próxima semana
-      if (proposal.born_from_lesson) {
-        const lesson = readMemory('lesson', proposal.born_from_lesson);
-        if (lesson) {
-          await writeMemory('lesson', proposal.born_from_lesson, {
-            ...lesson,
-            promoted_to_rule: true,
-            promoted_in_pr: prInfo.pr_url || prInfo.html_url || '',
-            promoted_at: new Date().toISOString(),
-          }, lesson.body || '');
-          console.log(`[self_improver] lección ${proposal.born_from_lesson} marcada como promoted_to_rule`);
-        } else {
-          console.warn(`[self_improver] no se encontró la lección ${proposal.born_from_lesson} para marcar como promoted`);
-        }
-      }
     } catch (err) {
       console.error(`[self_improver] PR falló para "${proposal.title}":`, err.message);
     }

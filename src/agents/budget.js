@@ -151,11 +151,8 @@ async function main() {
   if (percentTokens >= 100 || percentMinutes >= 100) action = 'THROTTLE';
   else if (percentTokens >= config.budgetWarnPercent || percentMinutes >= config.budgetWarnPercent) action = 'WARN';
 
-  // Throttle tareas antes de escribir el snapshot para que el conteo sea correcto
-  let throttledCount = 0;
   if (action === 'THROTTLE') {
     const tasks = loadThrottleableTasks();
-    throttledCount = tasks.length;
     for (const t of tasks) {
       throttleTask(t);
       console.log(`[budget] tarea throttled: ${t.id}`);
@@ -182,7 +179,7 @@ async function main() {
     minutes_percent: percentMinutes,
     calls: spend.calls,
     failures: spend.failures,
-    tasks_throttled: throttledCount,
+    tasks_throttled: action === 'THROTTLE' ? loadThrottleableTasks().length : 0,
     created: new Date().toISOString(),
   }, `# Budget snapshot ${todayISO()}\n\n- Tokens: ${spend.tokens}/${config.budgetDailyTokens} (${percentTokens}%)\n- Minutos: ${minutes}/${config.budgetDailyActionsMinutes} (${percentMinutes}%)\n- Action: ${action}`);
 

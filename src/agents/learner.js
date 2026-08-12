@@ -19,7 +19,6 @@ import { resolve } from 'node:path';
 import { config, restApiHeaders } from '../config.js';
 import { complete } from '../models.js';
 import { listMemories, writeMemory, nextId } from '../memory.js';
-import { parseAgentJSON } from '../utils/json.js';
 
 function parseArgs() {
   const args = {};
@@ -176,7 +175,9 @@ async function main() {
     { jsonMode: true, temperature: 0.3 }
   );
 
-  const result = parseAgentJSON(raw);
+  const first = raw.indexOf('{');
+  const last = raw.lastIndexOf('}');
+  const result = JSON.parse(raw.slice(first, last + 1));
   console.log(`[learner] decision=${result.lesson_decision}`);
 
   await postPostMortemComment(task, result);

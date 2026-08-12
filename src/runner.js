@@ -25,7 +25,6 @@ import { buildContext, serializeContext } from './context.js';
 import { writeMemory, nextId, saveIndex, buildIndex, saveVectors, loadVectors } from './memory.js';
 import { runTool, listTools } from './tools/index.js';
 import { parseFrontmatter } from './memory.js';
-import { extractJSON } from './utils/json.js';
 
 // ── Parseo de args ──
 function parseArgs() {
@@ -168,13 +167,32 @@ ${ctxText}
 }
 
 // ── Parseo robusto de la salida del modelo ──
-// Usa el helper compartido en src/utils/json.js para evitar duplicación.
+// El modelo puede devolver JSON puro, JSON con texto alrededor, o JSON dentro de ```json.
 function parseAgentOutput(content) {
-  const result = extractJSON(content);
-  if (!result.ok) {
-    throw new Error(`No se encontró JSON válido en la salida del modelo: ${result.error}`);
+  if (!content) throw new Error('Respuesta vacía del modelo');
+  let text = content.trim();
+
+  // Quitar fences si las hay
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) text = fenceMatch[1].trim();
+
+  // Buscar el primer { y el último }
+  const first = text.indexOf('{');
+  const last = text.lastIndexOf('}');
+  if (first === -1 || last === -1 || last < first) {
+    throw new Error('No se encontró JSON válido en la salida del modelo');
   }
-  return result.value;
+  const jsonStr = text.slice(first, last + 1);
+  try {
+    return JSON.parse(jsonStr);
+  } catch (err) {
+    // Intento final: limpiar comillas escapadas mal
+    try {
+      return JSON.parse(jsonStr.replace(/\\([^"\\nrtbf/])/g, '$1'));
+    } catch {
+      throw new Error(`JSON inválido: ${err.message}`);
+    }
+  }
 }
 
 // ── Persiste las memory_writes del output ──
@@ -210,17 +228,8 @@ function persistMemoryWrites(writes, task, agentName) {
 }
 
 // ── Registra el episodio (intent) ──
-function recordEpisode(task, agentName, output, attemptNum, gatesResult) {
+function recordEpisode(task, agentName, output, attemptNum) {
   const id = nextId('episode');
-  // Si el agente reportó gates_passed/failed, usar esos.
-  // Si no, usar los resultados reales de ejecutar gate_check.
-  const gatesPassed = (output.gates_passed && output.gates_passed.length > 0)
-    ? output.gates_passed
-    : (gatesResult?.passed || []);
-  const gatesFailed = (output.gates_failed && output.gates_failed.length > 0)
-    ? output.gates_failed
-    : (gatesResult?.failed || []);
-
   const data = {
     id,
     type: 'episode',
@@ -229,65 +238,14 @@ function recordEpisode(task, agentName, output, attemptNum, gatesResult) {
     attempt: attemptNum,
     agent: agentName,
     strategy: output.handoff?.completed?.join('; ') || '(sin estrategia declarada)',
-    gates_failed: gatesFailed,
-    gates_passed: gatesPassed,
+    gates_failed: (output.gates_failed || []),
+    gates_passed: (output.gates_passed || []),
     result: output.route || 'NEW',
     needs_human: output.needs_human === true,
     created: new Date().toISOString(),
   };
   writeMemory('episode', id, data, output.handoff ? JSON.stringify(output.handoff, null, 2) : '');
   return id;
-}
-
-// ── Ejecuta gates automáticamente y devuelve resultado ──
-// Antes el runner NO ejecutaba gates — solo guardaba lo que el agente reportaba
-// (que era siempre []) porque el schema no pedía gates_passed/failed.
-// Ahora: si el agente no reporta gates, ejecutamos gate_check para cada gate
-// de definition_of_done y registramos el resultado real.
-async function runGates(task, agentName) {
-  const dod = task.definition_of_done;
-  if (!Array.isArray(dod) || dod.length === 0) {
-    return { passed: [], failed: [], details: [] };
-  }
-
-  const passed = [];
-  const failed = [];
-  const details = [];
-
-  for (const gate of dod) {
-    if (!gate.id) continue;
-    // Saltar gates manuales — requieren intervención humana
-    if (gate.method === 'manual') {
-      details.push({ id: gate.id, method: 'manual', status: 'pending_human', reason: gate.expect || 'requiere revisión humana' });
-      failed.push(gate.id); // manual = pending = no pasa automáticamente
-      continue;
-    }
-    if (!gate.command && gate.method !== 'security_scan' && gate.method !== 'diff_scan') {
-      details.push({ id: gate.id, method: gate.method, status: 'skipped', reason: 'sin command' });
-      continue;
-    }
-    try {
-      const result = await runTool('gate_check', {
-        gate_id: gate.id,
-        method: gate.method,
-        command: gate.command,
-        expect: gate.expect,
-        files_to_scan: gate.files_to_scan,
-      }, { agentName, task });
-      if (result?.pass) {
-        passed.push(gate.id);
-        details.push({ id: gate.id, method: gate.method, status: 'pass', output: result.stdout?.slice(0, 200) });
-      } else {
-        failed.push(gate.id);
-        details.push({ id: gate.id, method: gate.method, status: 'fail', reason: result?.reason || result?.stderr?.slice(0, 200) || 'gate falló' });
-      }
-    } catch (err) {
-      failed.push(gate.id);
-      details.push({ id: gate.id, method: gate.method, status: 'error', reason: err.message });
-    }
-  }
-
-  return { passed, failed, details };
 }
 
 // ── Actualiza el estado de la tarea ──
@@ -458,34 +416,8 @@ async function main() {
   const writesResult = persistMemoryWrites(output.memory_writes || [], task, args.agent);
   console.log(`[runner] memoria escrita: ${writesResult.filter((w) => w.written).length} archivos`);
 
-  // Ejecutar gates automáticamente si el agente no los reportó
-  let gatesResult = null;
-  if ((!output.gates_passed || output.gates_passed.length === 0) &&
-      (!output.gates_failed || output.gates_failed.length === 0) &&
-      ctx.task?.definition_of_done?.length > 0) {
-    console.log('[runner] ejecutando gates automáticamente...');
-    try {
-      gatesResult = await runGates(ctx.task, args.agent);
-      console.log(`[runner] gates: ${gatesResult.passed.length} pass, ${gatesResult.failed.length} fail`);
-      // Si todos los gates pasan, marcar la tarea como completada
-      if (gatesResult.passed.length > 0 && gatesResult.failed.length === 0) {
-        if (!output.handoff) output.handoff = {};
-        if (!output.handoff.completed) output.handoff.completed = [];
-        output.handoff.completed.push(`gates_passed: ${gatesResult.passed.join(', ')}`);
-      }
-      // Si algún gate falló, forzar handoff (no completed)
-      if (gatesResult.failed.length > 0 && !output.needs_human) {
-        output.route = output.route || 'NEW';
-        if (!output.handoff) output.handoff = {};
-        output.handoff.next_agent = output.handoff.next_agent || args.agent; // reintento mismo agente
-      }
-    } catch (err) {
-      console.warn(`[runner] runGates falló (no crítico): ${err.message}`);
-    }
-  }
-
-  // Registrar episodio (con gates reales si se ejecutaron)
-  const episodeId = recordEpisode(task, args.agent, output, ctx.task.attempt, gatesResult);
+  // Registrar episodio
+  const episodeId = recordEpisode(task, args.agent, output, ctx.task.attempt);
   console.log(`[runner] episodio registrado: ${episodeId}`);
 
   // Actualizar tarea

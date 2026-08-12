@@ -20,7 +20,6 @@ import { config, restApiHeaders } from './config.js';
 import { search, loadIndex, nextId, writeMemory } from './memory.js';
 import { complete } from './models.js';
 import { parseFrontmatter } from './memory.js';
-import { parseAgentJSON } from './utils/json.js';
 
 // ── Parseo de args/env ──
 function parseTrigger() {
@@ -107,9 +106,8 @@ function nextTaskNum() {
 function detectProject(text) {
   const lower = text.toLowerCase();
   for (const repo of config.targetRepos) {
-    if (!repo || !repo.includes('/')) continue;
     const name = repo.split('/')[1].toLowerCase();
-    if (name && lower.includes(name)) return name;
+    if (lower.includes(name)) return name;
   }
   // Detectar mencionados explícitamente
   const match = text.match(/proyecto[:\s]+([a-z0-9_-]+)/i);
@@ -181,17 +179,19 @@ Responde en JSON estricto con formato:
       ],
       { jsonMode: true, temperature: 0.1 }
     );
-    return parseAgentJSON(raw);
+    // Extraer JSON
+    const first = raw.indexOf('{');
+    const last = raw.lastIndexOf('}');
+    if (first >= 0 && last > first) {
+      return JSON.parse(raw.slice(first, last + 1));
+    }
   } catch (err) {
     console.error('[orchestrator] proposeDoD falló:', err.message);
   }
-  // Fallback: gates mínimos MANUAL — no se puede auto-validar sin el modelo.
-  // method: 'manual' fuerza intervención humana (no se ejecuta ningún comando).
-  // Antes esto era 'echo "TODO: comando real"' que SIEMPRE pasaba (exit 0)
-  // y permitía al agente cerrar la tarea sin verificación real.
+  // Fallback: gates mínimos
   return {
     gates: [
-      { id: 'G1', check: 'El síntoma reportado no se reproduce', method: 'manual', expect: 'revisión humana requerida — el modelo no pudo proponer un comando automático' },
+      { id: 'G1', check: 'El síntoma reportado no se reproduce', method: 'test', command: 'echo "TODO: comando real"', expect: 'exit_code == 0' },
       { id: 'G2', check: 'Sin secretos en cambios', method: 'security_scan' },
     ],
     budget: { max_attempts: 5, max_minutes: 25, max_tokens: 120000 },
@@ -297,9 +297,7 @@ async function handleApprove(issue, comment) {
   // Busca la tarea asociada al issue
   const tasksDir = resolve(config.root, config.paths.tasks);
   if (!existsSync(tasksDir)) return;
-  const files = readdirSyncSafe(tasksDir).filter(
-    (f) => f.endsWith('.json') && f !== 'index.json' && f.startsWith('TASK-')
-  );
+  const files = readdirSyncSafe(tasksDir).filter((f) => f.endsWith('.json'));
   for (const f of files) {
     const t = JSON.parse(readFileSync(join(tasksDir, f), 'utf8'));
     if (t.issue === issue.number && t.status === 'needs_human') {

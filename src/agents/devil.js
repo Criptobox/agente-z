@@ -21,7 +21,6 @@ import { resolve, join } from 'node:path';
 import { config, restApiHeaders } from '../config.js';
 import { complete } from '../models.js';
 import { loadIndex, readMemory, listMemories, writeMemory } from '../memory.js';
-import { parseAgentJSON } from '../utils/json.js';
 
 function parseArgs() {
   const args = {};
@@ -64,15 +63,7 @@ function buildDevilPrompt(task, lastEpisode, allEpisodes) {
 
   const episodesText = allEpisodes.map((e) => `- Intento ${e.attempt}: ruta=${e.result}, agente=${e.agent}, gates_fallidos=${(e.gates_failed || []).join(',')}, gates_verdes=${(e.gates_passed || []).join(',')}`).join('\n');
 
-  const memoryUsed = (() => {
-    try {
-      if (!lastEpisode?.body) return [];
-      const parsed = JSON.parse(lastEpisode.body);
-      return parsed.reused_memory || [];
-    } catch {
-      return [];
-    }
-  })();
+  const memoryUsed = lastEpisode?.body ? JSON.parse(lastEpisode.body).reused_memory || [] : [];
 
   return `Eres EL ABOGADO DEL DIABLO. No trabajas en la tarea. Tu único trabajo es dudar del consenso de los demás agentes.
 
@@ -236,8 +227,10 @@ async function main() {
     { jsonMode: true, temperature: 0.4 }
   );
 
-  // Parse JSON robusto
-  const devil = parseAgentJSON(raw);
+  // Parse JSON
+  const first = raw.indexOf('{');
+  const last = raw.lastIndexOf('}');
+  const devil = JSON.parse(raw.slice(first, last + 1));
   console.log(`[devil] veredicto=${devil.verdict} concerns=${devil.concerns?.length || 0}`);
 
   await postDevilComment(task, devil);
