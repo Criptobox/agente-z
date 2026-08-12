@@ -2,9 +2,6 @@
 # Endpoint conversacional para el dashboard.
 # El dashboard lo invoca vía repository_dispatch con { question, history }.
 # Devuelve la respuesta como artifact (leída por el dashboard vía API).
-#
-# Seguridad: el input del usuario (question) se pasa por env vars, NUNCA interpolado
-# directamente en código JS o shell. Esto previene inyección de código.
 
 name: chat
 
@@ -31,6 +28,13 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
 
+      - name: Determine question
+        id: q
+        run: |
+          QUESTION="${{ github.event.client_payload.question || github.event.inputs.question }}"
+          echo "question=$QUESTION" >> $GITHUB_OUTPUT
+          echo "Pregunta: $QUESTION"
+
       - name: Run chat
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -38,11 +42,8 @@ jobs:
           MODELS_PRIMARY: ${{ vars.MODELS_PRIMARY }}
           MODELS_FALLBACK: ${{ vars.MODELS_FALLBACK }}
           LOCALE: es
-          # El input del usuario se pasa por env var (no se interpola en shell)
-          CHAT_QUESTION: ${{ github.event.client_payload.question || github.event.inputs.question }}
-          CHAT_ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
         run: |
-          node src/chat.js --question="$CHAT_QUESTION" > /tmp/chat-response.txt 2>&1 || true
+          node src/chat.js --question="${{ steps.q.outputs.question }}" > /tmp/chat-response.txt 2>&1 || true
           # Extraer solo la respuesta (entre marcadores)
           sed -n '/---RESPONSE_START---/,/---RESPONSE_END---/p' /tmp/chat-response.txt | sed '1d;$d' > /tmp/chat-final.txt
           echo "Respuesta:"
@@ -58,24 +59,15 @@ jobs:
       - name: Comment on issue if applicable
         if: github.event_name == 'repository_dispatch' && github.event.client_payload.issue_number
         uses: actions/github-script@v7
-        env:
-          CHAT_QUESTION: ${{ github.event.client_payload.question }}
-          CHAT_ISSUE_NUMBER: ${{ github.event.client_payload.issue_number }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
             const response = fs.readFileSync('/tmp/chat-final.txt', 'utf8').trim() || '(sin respuesta)';
-            // Leer del env, no de interpolación — previene inyección de código
-            const question = process.env.CHAT_QUESTION || '(pregunta vacía)';
-            const issueNumber = parseInt(process.env.CHAT_ISSUE_NUMBER, 10);
-            if (!issueNumber || isNaN(issueNumber)) {
-              core.info('Sin issue_number, no se comenta');
-              return;
-            }
+            const question = '${{ steps.q.outputs.question }}';
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: issueNumber,
+              issue_number: ${{ github.event.client_payload.issue_number }},
               body: `### 💬 Pregunta: ${question}\n\n${response}`
             });
