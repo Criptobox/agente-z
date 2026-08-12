@@ -1,0 +1,61 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0e14"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+    <linearGradient id="brainGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#58a6ff"/>
+      <stop offset="50%" stop-color="#bc8cff"/>
+      <stop offset="100%" stop-color="#3fb950"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <!-- Brain icon: stylized neural network -->
+  <g transform="translate(256, 256)" filter="url(#glow)">
+    <!-- Central node -->
+    <circle cx="0" cy="0" r="40" fill="url(#brainGrad)" opacity="0.95"/>
+
+    <!-- Surrounding nodes -->
+    <circle cx="-110" cy="-70" r="22" fill="#58a6ff" opacity="0.9"/>
+    <circle cx="110" cy="-70" r="22" fill="#bc8cff" opacity="0.9"/>
+    <circle cx="-110" cy="70" r="22" fill="#3fb950" opacity="0.9"/>
+    <circle cx="110" cy="70" r="22" fill="#d29922" opacity="0.9"/>
+    <circle cx="0" cy="-130" r="18" fill="#f85149" opacity="0.9"/>
+    <circle cx="0" cy="130" r="18" fill="#58a6ff" opacity="0.9"/>
+
+    <!-- Connections -->
+    <g stroke="url(#brainGrad)" stroke-width="3" fill="none" opacity="0.6">
+      <line x1="0" y1="0" x2="-110" y2="-70"/>
+      <line x1="0" y1="0" x2="110" y2="-70"/>
+      <line x1="0" y1="0" x2="-110" y2="70"/>
+      <line x1="0" y1="0" x2="110" y2="70"/>
+      <line x1="0" y1="0" x2="0" y2="-130"/>
+      <line x1="0" y1="0" x2="0" y2="130"/>
+      <line x1="-110" y1="-70" x2="0" y2="-130"/>
+      <line x1="110" y1="-70" x2="0" y2="-130"/>
+      <line x1="-110" y1="70" x2="0" y2="130"/>
+      <line x1="110" y1="70" x2="0" y2="130"/>
+    </g>
+
+    <!-- Pulse rings around center -->
+    <circle cx="0" cy="0" r="60" fill="none" stroke="#58a6ff" stroke-width="2" opacity="0.3"/>
+    <circle cx="0" cy="0" r="80" fill="none" stroke="#bc8cff" stroke-width="1.5" opacity="0.2"/>
+  </g>
+
+  <!-- Bottom label -->
+  <text x="256" y="475" font-family="-apple-system, system-ui, sans-serif" font-size="28" font-weight="600"
+        text-anchor="middle" fill="#e6edf3" opacity="0.8" letter-spacing="2">
+    agent-brain
+  </text>
+</svg>
