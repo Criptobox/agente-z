@@ -126,6 +126,18 @@
     onError(lastErr || new Error('Streaming falló sin error específico'));
   }
 
+  // Providers que SABEMOS que bloquean llamadas desde browser (CORS)
+  // y por los que hay que rutear a través de un proxy CORS público.
+  // Lista negra CORS — probada con curl -X OPTIONS:
+  //   - groq: NO envía Access-Control-Allow-Origin en preflight
+  //   - openai: ídem
+  //   - anthropic: ídem
+  //   - github (models.inference.ai.azure.com): ídem
+  // Providers que SÍ funcionan directo desde browser:
+  //   - openrouter, deepseek, gemini
+  const CORS_BLOCKED_PROVIDERS = ['groq', 'openai', 'anthropic', 'github'];
+  const CORS_PROXY = 'https://corsproxy.io/?url=';
+
   async function streamOnce(attempt, messages, opts, onToken, onDone, onError, isFallback) {
     const cfg = getProviderConfig(attempt.provider, attempt.model, attempt.key);
     if (!cfg) throw new Error(`Provider no soportado: ${attempt.provider}`);
@@ -133,12 +145,36 @@
     const useStream = cfg.supportsStream && opts.stream !== false;
     const body = cfg.chatBody(messages, { ...opts, stream: useStream });
 
-    const res = await fetch(cfg.endpoint, {
-      method: 'POST',
-      headers: cfg.headers,
-      body: JSON.stringify(body),
-      signal: opts.signal,
-    });
+    // Si el provider está en lista negra CORS, rutear a través del proxy
+    let url = cfg.endpoint;
+    const needsProxy = CORS_BLOCKED_PROVIDERS.includes(attempt.provider);
+    if (needsProxy) {
+      url = CORS_PROXY + encodeURIComponent(cfg.endpoint);
+    }
+
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: cfg.headers,
+        body: JSON.stringify(body),
+        signal: opts.signal,
+      });
+    } catch (fetchErr) {
+      // Si falla el fetch directo (CORS, red, etc.) y no estamos usando proxy aún, reintentar con proxy
+      if (!needsProxy && (fetchErr.name === 'TypeError' || fetchErr.message.includes('Failed to fetch'))) {
+        console.warn(`[streaming] ${attempt.provider} fetch directo falló (${fetchErr.message}), reintentando con proxy CORS…`);
+        const proxyUrl = CORS_PROXY + encodeURIComponent(cfg.endpoint);
+        res = await fetch(proxyUrl, {
+          method: 'POST',
+          headers: cfg.headers,
+          body: JSON.stringify(body),
+          signal: opts.signal,
+        });
+      } else {
+        throw fetchErr;
+      }
+    }
 
     if (!res.ok) {
       const txt = await res.text().catch(() => '');

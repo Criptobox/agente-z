@@ -1496,11 +1496,135 @@ async function sendChatMessage(question) {
     return;
   }
 
-  // Chat normal: streaming palabra por palabra
+  // ─── Chat normal con IA real (streaming token por token en vivo) ───
+  // Si hay API key configurada, llamamos directo a window.streaming.stream()
+  // para que el texto aparezca palabra por palabra EN TIEMPO REAL.
+  // Si no hay API key, caemos al bgRunner (mock o backend).
+  const apiKey = localStorage.getItem('llm-api-key') || '';
+  const provider = localStorage.getItem('llm-provider') || 'groq';
+
+  if (apiKey && window.streaming && typeof window.streaming.stream === 'function') {
+    // === Streaming REAL — el texto aparece a medida que la IA lo genera ===
+    const messages = $('#chat-messages');
+    const empty = messages.querySelector('.chat__empty');
+    if (empty) empty.remove();
+
+    const assistantMsg = document.createElement('div');
+    assistantMsg.className = 'chat__msg chat__msg--assistant chat__msg--streaming';
+    assistantMsg.innerHTML = `
+      <div class="chat__msg-avatar">🤖</div>
+      <div class="chat__msg-body"><span class="chat__streaming-cursor"></span></div>
+    `;
+    messages.appendChild(assistantMsg);
+    messages.scrollTop = messages.scrollHeight;
+
+    const msgBody = assistantMsg.querySelector('.chat__msg-body');
+    let fullText = '';
+    let firstTokenReceived = false;
+
+    // System prompt para el asistente
+    const systemPrompt = `Eres el asistente conversacional de agent-brain, un sistema multi-agente en GitHub. Respondes preguntas del usuario sobre su sistema en lenguaje natural.
+
+## REGLAS
+- Responde en texto markdown natural, NO JSON.
+- Sé honesto: si no sabes algo, dilo.
+- Sé conciso: máx 3 párrafos. El usuario lee desde móvil.
+- Si la pregunta requiere crear una tarea, sugiérelo pero NO la crees.
+- Cita IDs concretos (TASK-XXXX, BUG-XXXX, LESSON-XXXX) cuando sea relevante.`;
+
+    const llmMessages = [
+      { role: 'system', content: systemPrompt },
+      ...state.chatHistory.slice(-6).map(h => ({ role: h.role || 'user', content: h.content })),
+      { role: 'user', content: question },
+    ];
+
+    const model = localStorage.getItem('llm-model') || (window.__defaultModelFor ? window.__defaultModelFor(provider) : 'llama-3.1-70b-versatile');
+    const fallbackProvider = localStorage.getItem('llm-fallback-provider') || '';
+
+    // Botón cancelar
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'chat__cancel-btn';
+    cancelBtn.textContent = '✕';
+    cancelBtn.title = 'Cancelar';
+    cancelBtn.onclick = () => {
+      if (window.__currentChatController) {
+        window.__currentChatController.abort();
+        window.__currentChatController = null;
+      }
+    };
+    assistantMsg.querySelector('.chat__msg-avatar').appendChild(cancelBtn);
+
+    try {
+      await new Promise((resolve, reject) => {
+        window.streaming.stream(
+          llmMessages,
+          { provider, model, apiKey, stream: true, temperature: 0.4, maxTokens: 1024 },
+          // onToken — aparece EN VIVO
+          (token) => {
+            if (!firstTokenReceived) {
+              firstTokenReceived = true;
+              msgBody.innerHTML = '';
+            }
+            fullText += token;
+            // Render markdown básico en vivo
+            msgBody.innerHTML = renderMarkdownLive(fullText) + '<span class="chat__streaming-cursor"></span>';
+            messages.scrollTop = messages.scrollHeight;
+          },
+          // onDone
+          (full) => {
+            const finalText = full || fullText;
+            msgBody.innerHTML = renderMarkdownLive(finalText);
+            assistantMsg.classList.remove('chat__msg--streaming');
+            if (cancelBtn.parentNode) cancelBtn.remove();
+            state.chatHistory.push({ role: 'assistant', content: finalText });
+            if (window.chatHistory) window.chatHistory.save(state.chatHistory);
+            if (state.autoSpeak && window.voice) window.voice.speak(finalText);
+            resolve(finalText);
+          },
+          // onError
+          (err) => {
+            if (err.name === 'AbortError') {
+              // El usuario canceló — guardar lo que se generó hasta el momento
+              if (fullText) {
+                msgBody.innerHTML = renderMarkdownLive(fullText) + '\n\n_⚠ Respuesta cancelada_';
+                state.chatHistory.push({ role: 'assistant', content: fullText });
+                if (window.chatHistory) window.chatHistory.save(state.chatHistory);
+              } else {
+                if (assistantMsg.parentNode) assistantMsg.remove();
+              }
+              assistantMsg.classList.remove('chat__msg--streaming');
+              if (cancelBtn.parentNode) cancelBtn.remove();
+              resolve(fullText || '');
+            } else {
+              reject(err);
+            }
+          },
+        );
+      });
+      $('#chat-send').disabled = false;
+      $('#chat-input').focus();
+    } catch (err) {
+      // Error fatal (CORS, API key inválida, etc.)
+      if (assistantMsg.parentNode) assistantMsg.remove();
+      let errMsg = err.message || String(err);
+      // Mensajes de error más claros
+      if (errMsg.includes('Failed to fetch') || errMsg.includes('NetworkError')) {
+        errMsg = `No se pudo conectar con ${provider}. Esto suele ser por:\n` +
+                 `• CORS: ${provider} bloquea llamadas desde el navegador. Usá OpenRouter, DeepSeek o Gemini (funcionan desde browser).\n` +
+                 `• API key inválida o sin permisos.\n` +
+                 `• Sin internet.`;
+      }
+      addChatMessage('assistant', '❌ **Error:** ' + errMsg + '\n\n_Ve a Settings → Modelos de IA para configurar otra provider._', 'chat', []);
+      $('#chat-send').disabled = false;
+      $('#chat-input').focus();
+    }
+    return;
+  }
+
+  // === Sin API key — caer al bgRunner (mock o backend) ===
   const progressMsgId = 'prog-' + Date.now();
   addProgressMessage(progressMsgId, 'Conectando...');
 
-  // Crear mensaje del asistente vacío que se irá llenando
   const messages = $('#chat-messages');
   const empty = messages.querySelector('.chat__empty');
   if (empty) empty.remove();
@@ -1518,8 +1642,6 @@ async function sendChatMessage(question) {
     message: question, history: state.chatHistory.slice(-6),
   });
 
-  let useStreaming = false;
-
   window.bgRunner.on(taskId, (task) => {
     if (task.status === 'running') {
       updateProgressMessage(progressMsgId, task.description, task.progress);
@@ -1529,22 +1651,47 @@ async function sendChatMessage(question) {
       const agent = result?.agent || 'chat';
       const text = result?.text || result?.response || '(sin respuesta)';
 
-      // Llenar el mensaje del asistente con streaming palabra por palabra
       streamTextIntoMessage(assistantMsg, text, agent, result?.actionCards);
       state.chatHistory.push({ role: 'assistant', content: text });
 
-      // Guardar historial persistente
       if (window.chatHistory) window.chatHistory.save(state.chatHistory);
 
       if (state.autoSpeak && window.voice) window.voice.speak(text);
     } else if (task.status === 'error') {
       removeProgressMessage(progressMsgId);
       if (assistantMsg.parentNode) assistantMsg.remove();
-      addChatMessage('assistant', '❌ Error: ' + task.error, 'chat', []);
+      addChatMessage('assistant', '❌ Error: ' + task.error + '\n\n_Configura tu API key en Settings → Modelos de IA para usar el chat real._', 'chat', []);
     }
     $('#chat-send').disabled = false;
     $('#chat-input').focus();
   });
+}
+
+// ─── Render markdown básico en vivo (sin librerías) ───
+function renderMarkdownLive(text) {
+  if (!text) return '';
+  // Escapar HTML primero
+  let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // Code blocks
+  html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Bold
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // Italic
+  html = html.replace(/_([^_]+)_/g, '<em>$1</em>');
+  // Headings
+  html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
+  // Listas
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // Saltos de línea
+  html = html.replace(/\n/g, '<br>');
+  return html;
 }
 
 function streamTextIntoMessage(msgEl, text, agent, actionCards) {

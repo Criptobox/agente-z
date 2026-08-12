@@ -66,6 +66,7 @@
             <button class="btn btn--analyze" id="set-llm-test">🔍 Probar conexión</button>
           </div>
           <div id="set-llm-result" style="margin-top:var(--s-3)"></div>
+          <div id="set-llm-cors-hint" class="cors-hint"></div>
         </div>
       </div>
 
@@ -491,6 +492,9 @@
     }
   }
 
+  // Providers que SÍ funcionan directo desde el navegador (probado con curl)
+  const CORS_OK_PROVIDERS = ['openrouter', 'deepseek', 'gemini'];
+
   // Actualizar hints cuando cambia el provider
   function updateProviderHints() {
     const provider = document.getElementById('set-llm-provider')?.value || 'groq';
@@ -499,12 +503,25 @@
     const keyInput = document.getElementById('set-llm-key');
     const modelHint = document.getElementById('set-llm-model-hint');
     const keyHint = document.getElementById('set-llm-key-hint');
+    const corsHint = document.getElementById('set-llm-cors-hint');
 
     if (modelInput && !modelInput.value) modelInput.value = cfg.defaultModel;
     if (modelInput) modelInput.placeholder = cfg.defaultModel;
     if (keyInput) keyInput.placeholder = cfg.keyPlaceholder;
     if (modelHint) modelHint.textContent = cfg.modelHint;
     if (keyHint) keyHint.textContent = cfg.keyHint;
+
+    // Hint de CORS: ¿este provider funciona desde el navegador?
+    if (corsHint) {
+      if (CORS_OK_PROVIDERS.includes(provider)) {
+        corsHint.className = 'cors-hint';
+        corsHint.innerHTML = '✅ <strong>Funciona directo desde el navegador.</strong> No necesita proxy ni backend.';
+      } else {
+        corsHint.className = 'cors-hint cors-hint--warning';
+        corsHint.innerHTML = '⚠️ <strong>' + provider + ' bloquea llamadas desde el navegador (CORS).</strong> ' +
+          'Se usará un proxy CORS público automáticamente. <strong>Recomendado:</strong> usá OpenRouter, DeepSeek o Gemini para mejor rendimiento y privacidad.';
+      }
+    }
   }
 
   // Exponer globalmente

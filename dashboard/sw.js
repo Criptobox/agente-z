@@ -5,7 +5,7 @@
 //   - Imágenes/iconos: cache-first permanente
 //   - memory/*.json: network-first (datos vivos, fallback a cache)
 
-const VERSION = 'v1.0.3';
+const VERSION = 'v1.0.4';
 const CACHE_STATIC = `agent-brain-static-${VERSION}`;
 const CACHE_DATA = `agent-brain-data-${VERSION}`;
 const CACHE_IMG = `agent-brain-img-${VERSION}`;
