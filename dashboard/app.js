@@ -1456,42 +1456,104 @@ async function sendChatMessage(question) {
   $('#chat-send').disabled = true;
   addTypingIndicator();
 
-  try {
-    // En modo demo, simular respuesta
-    if (DEMO_MODE) {
-      await new Promise(r => setTimeout(r, 1200));
-      removeTypingIndicator();
-      const demoAnswer = getDemoChatAnswer(question);
-      addChatMessage('assistant', demoAnswer);
-      state.chatHistory.push({ role: 'assistant', content: demoAnswer });
-    } else {
-      // En producción, llamar al workflow chat.yml vía repository_dispatch
-      const token = localStorage.getItem('agent-brain-pat') || state.token;
-      const repo = state.repo || localStorage.getItem('agent-brain-repo');
-      if (!token || !repo) {
-        removeTypingIndicator();
-        addChatMessage('assistant', '⚠️ Para usar el chat necesitas configurar tu PAT de GitHub. Ábrelo desde `setup.html` primero.');
-        return;
-      }
-      const res = await fetch(`https://api.github.com/repos/${repo}/dispatches`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/vnd.github+json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          event_type: 'chat',
-          client_payload: { question, history: JSON.stringify(state.chatHistory.slice(-6)) },
-        }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      removeTypingIndicator();
-      addChatMessage('assistant', '✓ Tu pregunta fue enviada al agente `chat`. La respuesta aparecerá como comentario en el último Issue abierto del repo (o créalo con label `chat`). Tarda ~30s en llegar.');
-    }
-  } catch (err) {
+  // Si streaming.js no está cargado, error claro
+  if (!window.streaming || typeof window.streaming.stream !== 'function') {
     removeTypingIndicator();
-    addChatMessage('assistant', `❌ Error: ${err.message}`);
+    addChatMessage('assistant', '❌ Error: streaming.js no cargado. Recarga la página.');
+    $('#chat-send').disabled = false;
+    $('#chat-input').focus();
+    return;
+  }
+
+  // Preparar messages para el LLM: system prompt + historial + pregunta
+  const systemPrompt = `Eres el asistente conversacional de agent-brain, un sistema multi-agente en GitHub. Respondes preguntas del usuario sobre su sistema en lenguaje natural.
+
+## REGLAS
+- Responde en texto markdown natural, NO JSON.
+- Sé honesto: si no sabes algo, dilo.
+- Sé conciso: máx 3 párrafos. El usuario lee desde móvil.
+- Si la pregunta requiere crear una tarea, sugiérelo pero NO la crees.
+- Cita IDs concretos (TASK-XXXX, BUG-XXXX, LESSON-XXXX) cuando sea relevante.`;
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...state.chatHistory.slice(-6).map(h => ({
+      role: h.role || 'user',
+      content: h.content
+    })),
+    { role: 'user', content: question },
+  ];
+
+  // Crear burbuja de respuesta que iremos llenando
+  removeTypingIndicator();
+  const messagesEl = $('#chat-messages');
+  const empty = messagesEl.querySelector('.chat__empty');
+  if (empty) empty.remove();
+  const msgEl = document.createElement('div');
+  msgEl.className = 'chat__msg chat__msg--assistant';
+  msgEl.innerHTML = `
+    <div class="chat__msg-avatar">🤖</div>
+    <div class="chat__msg-body"></div>
+  `;
+  messagesEl.appendChild(msgEl);
+  const bodyEl = msgEl.querySelector('.chat__msg-body');
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  // Botón cancelar
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = '⏹';
+  cancelBtn.title = 'Detener';
+  cancelBtn.style.cssText = 'background:none;border:none;color:var(--c-text-muted);cursor:pointer;font-size:1em;padding:0 4px';
+  const abortCtrl = new AbortController();
+  cancelBtn.onclick = () => { abortCtrl.abort(); cancelBtn.remove(); };
+  msgEl.querySelector('.chat__msg-avatar').appendChild(cancelBtn);
+
+  let firstToken = true;
+  let fullText = '';
+
+  try {
+    await window.streaming.stream(
+      messages,
+      { temperature: 0.4, maxTokens: 1024, stream: true, signal: abortCtrl.signal },
+      // onToken(token, full)
+      (token, full) => {
+        if (firstToken) {
+          firstToken = false;
+          bodyEl.innerHTML = '';
+        }
+        fullText = full || (fullText + token);
+        // Render markdown muy básico: negritas, código inline, saltos de línea
+        const html = escapeHtml(fullText)
+          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+          .replace(/`([^`]+)`/g, '<code>$1</code>')
+          .replace(/\n/g, '<br>');
+        bodyEl.innerHTML = html;
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      },
+      // onDone(full)
+      (full) => {
+        cancelBtn.remove();
+        const finalText = full || fullText;
+        state.chatHistory.push({ role: 'assistant', content: finalText });
+        if (window.chatHistory?.save) window.chatHistory.save(state.chatHistory);
+      },
+      // onError(err)
+      (err) => {
+        cancelBtn.remove();
+        if (err.name === 'AbortError') {
+          // Usuario canceló: guardar lo que tengas hasta ahora
+          if (fullText) state.chatHistory.push({ role: 'assistant', content: fullText });
+          bodyEl.innerHTML += '<br><em style="color:var(--c-text-muted)">(detenido)</em>';
+        } else {
+          bodyEl.innerHTML = `<span style="color:var(--c-danger)">❌ ${escapeHtml(err.message).slice(0, 200)}</span>`;
+        }
+      }
+    );
+  } catch (err) {
+    cancelBtn.remove();
+    if (firstToken) {
+      bodyEl.innerHTML = `<span style="color:var(--c-danger)">❌ ${escapeHtml(err.message).slice(0, 200)}</span>`;
+    }
   } finally {
     $('#chat-send').disabled = false;
     $('#chat-input').focus();

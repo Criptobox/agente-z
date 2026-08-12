@@ -31,6 +31,8 @@
               <label class="field__label">Provider primario</label>
               <select class="field__input" id="set-llm-provider">
                 <option value="groq">Groq (gratis, ultra-rápido)</option>
+                <option value="openrouter">OpenRouter (multi-modelo, con gratis)</option>
+                <option value="deepseek">DeepSeek (barato, razonamiento fuerte)</option>
                 <option value="gemini">Google Gemini (gratis)</option>
                 <option value="openai">OpenAI (pago)</option>
                 <option value="anthropic">Anthropic (pago)</option>
@@ -40,6 +42,7 @@
             <div class="field">
               <label class="field__label">Modelo</label>
               <input class="field__input" type="text" id="set-llm-model" placeholder="llama-3.1-70b-versatile" value="llama-3.1-70b-versatile">
+              <small class="field__hint" id="set-llm-model-hint" style="display:block;margin-top:4px;color:var(--c-text-muted);font-size:0.85em"></small>
             </div>
             <div class="field">
               <label class="field__label">API Key</label>
@@ -49,8 +52,10 @@
               <label class="field__label">Provider fallback (opcional)</label>
               <select class="field__input" id="set-fallback-provider">
                 <option value="">(ninguno)</option>
-                <option value="gemini">Google Gemini</option>
                 <option value="groq">Groq</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="gemini">Google Gemini</option>
                 <option value="github">GitHub Models</option>
               </select>
             </div>
@@ -258,34 +263,153 @@
 
     document.getElementById('set-llm-test')?.addEventListener('click', async () => {
       const provider = document.getElementById('set-llm-provider').value;
-      const model = document.getElementById('set-llm-model').value;
-      const key = document.getElementById('set-llm-key').value;
+      const model = document.getElementById('set-llm-model').value.trim() || defaultModelFor(provider);
+      const key = document.getElementById('set-llm-key').value.trim();
       const result = document.getElementById('set-llm-result');
       if (!key) { result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">⚠️ Falta API key</div>'; return; }
       result.innerHTML = '<div class="inv-loading"><div class="inv-loading__spinner"></div><div>Probando…</div></div>';
       try {
-        let endpoint, headers, body;
-        if (provider === 'groq') {
-          endpoint = 'https://api.groq.com/openai/v1/chat/completions';
-          headers = { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' };
-          body = JSON.stringify({ model, messages: [{ role: 'user', content: 'Responde solo "OK"'}], max_tokens: 5 });
-        } else if (provider === 'gemini') {
-          endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-          headers = { 'Content-Type': 'application/json' };
-          body = JSON.stringify({ contents: [{ parts: [{ text: 'Responde solo OK' }] }] });
-        } else {
-          throw new Error('Provider no soportado para test');
-        }
-        const res = await fetch(endpoint, { method: 'POST', headers, body });
+        const cfg = providerConfig(provider, model, key);
+        const res = await fetch(cfg.endpoint, {
+          method: 'POST',
+          headers: cfg.headers,
+          body: JSON.stringify(cfg.testBody),
+        });
         if (res.ok) {
           result.innerHTML = '<div class="info-banner" style="background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.3)">✅ Conexión exitosa con ' + provider + ' / ' + model + '</div>';
         } else {
-          result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">❌ Error ' + res.status + ': ' + res.statusText + '</div>';
+          const txt = await res.text().catch(() => '');
+          let errMsg = res.status + ' ' + res.statusText;
+          try { const j = JSON.parse(txt); errMsg += ' — ' + (j.error?.message || j.message || '').slice(0, 200); } catch {}
+          result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">❌ ' + errMsg + '</div>';
         }
       } catch (err) {
         result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">❌ ' + err.message + '</div>';
       }
     });
+
+    // Actualiza placeholder + hint del modelo según provider
+    function defaultModelFor(provider) {
+      switch (provider) {
+        case 'groq':       return 'llama-3.1-70b-versatile';
+        case 'openrouter': return 'openai/gpt-4o-mini';
+        case 'deepseek':   return 'deepseek-chat';
+        case 'gemini':     return 'gemini-1.5-flash';
+        case 'openai':     return 'gpt-4o-mini';
+        case 'anthropic':  return 'claude-3-5-haiku-latest';
+        case 'github':     return 'gpt-4o-mini';
+        default:           return '';
+      }
+    }
+    function hintFor(provider) {
+      switch (provider) {
+        case 'groq':       return 'Gratis en console.groq.com — 30 req/min. Modelo típico: llama-3.1-70b-versatile';
+        case 'openrouter': return 'Multi-provider con tier gratis. Formato: "proveedor/modelo" ej: openai/gpt-4o-mini, deepseek/deepseek-chat, meta-llama/llama-3.1-8b-instruct';
+        case 'deepseek':   return 'Barato y buen razonamiento. Modelos: deepseek-chat, deepseek-reasoner';
+        case 'gemini':     return 'Gratis en ai.google.dev — 15 req/min. Modelos: gemini-1.5-flash, gemini-1.5-pro';
+        case 'openai':     return 'Requiere pago. Modelos: gpt-4o-mini, gpt-4o, gpt-3.5-turbo';
+        case 'anthropic':  return 'Requiere pago. Modelos: claude-3-5-haiku-latest, claude-3-5-sonnet-latest';
+        case 'github':     return 'Gratis con token de GitHub. Modelos: gpt-4o-mini, Phi-3-mini-4k-instruct';
+        default:           return '';
+      }
+    }
+    function providerConfig(provider, model, key) {
+      // Devuelve { endpoint, headers, chatBody(messages,opts), testBody, supportsStream }
+      switch (provider) {
+        case 'groq':
+          return {
+            endpoint: 'https://api.groq.com/openai/v1/chat/completions',
+            headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+            chatBody: (m, o) => ({ model, messages: m, stream: !!o.stream, temperature: o.temperature ?? 0.4, max_tokens: o.maxTokens ?? 1024 }),
+            testBody: { model, messages: [{ role: 'user', content: 'Responde solo "OK"' }], max_tokens: 5 },
+            supportsStream: true,
+          };
+        case 'openrouter':
+          return {
+            endpoint: 'https://openrouter.ai/api/v1/chat/completions',
+            headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': location.origin, 'X-Title': 'agent-brain' },
+            chatBody: (m, o) => ({ model, messages: m, stream: !!o.stream, temperature: o.temperature ?? 0.4, max_tokens: o.maxTokens ?? 1024 }),
+            testBody: { model, messages: [{ role: 'user', content: 'Responde solo "OK"' }], max_tokens: 5 },
+            supportsStream: true,
+          };
+        case 'deepseek':
+          return {
+            endpoint: 'https://api.deepseek.com/v1/chat/completions',
+            headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+            chatBody: (m, o) => ({ model, messages: m, stream: !!o.stream, temperature: o.temperature ?? 0.4, max_tokens: o.maxTokens ?? 1024 }),
+            testBody: { model, messages: [{ role: 'user', content: 'Responde solo "OK"' }], max_tokens: 5 },
+            supportsStream: true,
+          };
+        case 'gemini':
+          return {
+            endpoint: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+            headers: { 'Content-Type': 'application/json' },
+            chatBody: (m, o) => ({
+              contents: m.filter(x => x.role !== 'system').map(x => ({ role: x.role === 'assistant' ? 'model' : 'user', parts: [{ text: x.content }] })),
+              systemInstruction: m.find(x => x.role === 'system') ? { parts: [{ text: m.find(x => x.role === 'system').content }] } : undefined,
+              generationConfig: { temperature: o.temperature ?? 0.4, maxOutputTokens: o.maxTokens ?? 1024 },
+            }),
+            testBody: { contents: [{ parts: [{ text: 'Responde solo OK' }] }] },
+            supportsStream: false,
+          };
+        case 'openai':
+          return {
+            endpoint: 'https://api.openai.com/v1/chat/completions',
+            headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+            chatBody: (m, o) => ({ model, messages: m, stream: !!o.stream, temperature: o.temperature ?? 0.4, max_tokens: o.maxTokens ?? 1024 }),
+            testBody: { model, messages: [{ role: 'user', content: 'Responde solo "OK"' }], max_tokens: 5 },
+            supportsStream: true,
+          };
+        case 'anthropic':
+          return {
+            endpoint: 'https://api.anthropic.com/v1/messages',
+            headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+            chatBody: (m, o) => ({
+              model,
+              system: m.find(x => x.role === 'system')?.content || undefined,
+              messages: m.filter(x => x.role !== 'system').map(x => ({ role: x.role, content: x.content })),
+              max_tokens: o.maxTokens ?? 1024,
+              temperature: o.temperature ?? 0.4,
+            }),
+            testBody: {
+              model, max_tokens: 5,
+              messages: [{ role: 'user', content: 'Responde solo "OK"' }],
+            },
+            supportsStream: false,
+          };
+        case 'github':
+          return {
+            endpoint: 'https://models.inference.ai.azure.com/chat/completions',
+            headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+            chatBody: (m, o) => ({ model, messages: m, temperature: o.temperature ?? 0.4, max_tokens: o.maxTokens ?? 1024 }),
+            testBody: { model, messages: [{ role: 'user', content: 'Responde solo "OK"' }], max_tokens: 5 },
+            supportsStream: false,
+          };
+        default:
+          throw new Error('Provider no soportado: ' + provider);
+      }
+    }
+    // Exportar para que streaming.js pueda usarlo
+    window.__providerConfig = providerConfig;
+    window.__defaultModelFor = defaultModelFor;
+
+    // Cuando cambie el provider, actualizar placeholder + hint + modelo por defecto si está vacío
+    const providerSel = document.getElementById('set-llm-provider');
+    const modelInput = document.getElementById('set-llm-model');
+    const modelHint = document.getElementById('set-llm-model-hint');
+    function refreshProviderUI() {
+      const p = providerSel.value;
+      const def = defaultModelFor(p);
+      modelInput.placeholder = def;
+      modelHint.textContent = hintFor(p);
+      // Si el modelo actual no parece corresponder al provider, sugerir el default
+      if (!modelInput.value.trim() || modelInput.dataset.lastProvider !== p) {
+        modelInput.value = def;
+        modelInput.dataset.lastProvider = p;
+      }
+    }
+    providerSel?.addEventListener('change', refreshProviderUI);
+    refreshProviderUI();
 
     document.getElementById('set-backend-save')?.addEventListener('click', () => {
       save('set-supabase-url', 'agent-brain-supabase-url');
