@@ -31,6 +31,8 @@
               <label class="field__label">Provider primario</label>
               <select class="field__input" id="set-llm-provider">
                 <option value="groq">Groq (gratis, ultra-rápido)</option>
+                <option value="openrouter">OpenRouter (gratis + pago, 100+ modelos)</option>
+                <option value="deepseek">DeepSeek (barato, razonamiento fuerte)</option>
                 <option value="gemini">Google Gemini (gratis)</option>
                 <option value="openai">OpenAI (pago)</option>
                 <option value="anthropic">Anthropic (pago)</option>
@@ -40,17 +42,21 @@
             <div class="field">
               <label class="field__label">Modelo</label>
               <input class="field__input" type="text" id="set-llm-model" placeholder="llama-3.1-70b-versatile" value="llama-3.1-70b-versatile">
+              <small id="set-llm-model-hint" style="display:block;color:var(--text-secondary);font-size:11px;margin-top:4px"></small>
             </div>
             <div class="field">
               <label class="field__label">API Key</label>
               <input class="field__input" type="password" id="set-llm-key" placeholder="gsk_xxx...">
+              <small id="set-llm-key-hint" style="display:block;color:var(--text-secondary);font-size:11px;margin-top:4px"></small>
             </div>
             <div class="field">
               <label class="field__label">Provider fallback (opcional)</label>
               <select class="field__input" id="set-fallback-provider">
                 <option value="">(ninguno)</option>
-                <option value="gemini">Google Gemini</option>
                 <option value="groq">Groq</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="gemini">Google Gemini</option>
                 <option value="github">GitHub Models</option>
               </select>
             </div>
@@ -265,14 +271,33 @@
       result.innerHTML = '<div class="inv-loading"><div class="inv-loading__spinner"></div><div>Probando…</div></div>';
       try {
         let endpoint, headers, body;
-        if (provider === 'groq') {
-          endpoint = 'https://api.groq.com/openai/v1/chat/completions';
+        if (provider === 'groq' || provider === 'openrouter' || provider === 'deepseek' || provider === 'openai') {
+          // OpenAI-compatible: groq, openrouter, deepseek, openai
+          const endpoints = {
+            groq: 'https://api.groq.com/openai/v1/chat/completions',
+            openrouter: 'https://openrouter.ai/api/v1/chat/completions',
+            deepseek: 'https://api.deepseek.com/chat/completions',
+            openai: 'https://api.openai.com/v1/chat/completions',
+          };
+          endpoint = endpoints[provider];
           headers = { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' };
+          if (provider === 'openrouter') {
+            headers['HTTP-Referer'] = location.origin;
+            headers['X-Title'] = 'agent-brain';
+          }
           body = JSON.stringify({ model, messages: [{ role: 'user', content: 'Responde solo "OK"'}], max_tokens: 5 });
         } else if (provider === 'gemini') {
           endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
           headers = { 'Content-Type': 'application/json' };
           body = JSON.stringify({ contents: [{ parts: [{ text: 'Responde solo OK' }] }] });
+        } else if (provider === 'anthropic') {
+          endpoint = 'https://api.anthropic.com/v1/messages';
+          headers = { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' };
+          body = JSON.stringify({ model, max_tokens: 5, messages: [{ role: 'user', content: 'Responde solo OK' }] });
+        } else if (provider === 'github') {
+          endpoint = 'https://models.inference.ai.azure.com/chat/completions';
+          headers = { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' };
+          body = JSON.stringify({ model, messages: [{ role: 'user', content: 'Responde solo "OK"'}], max_tokens: 5 });
         } else {
           throw new Error('Provider no soportado para test');
         }
@@ -387,6 +412,119 @@
     });
   }
 
+  // ─── Helpers dinámicos por provider ───
+  // Config de cada provider: modelo por defecto, placeholder de API key, link para obtenerla
+  const PROVIDER_CONFIG = {
+    groq: {
+      defaultModel: 'llama-3.1-70b-versatile',
+      keyPlaceholder: 'gsk_xxx...',
+      keyHint: 'Obtén tu key gratis en console.groq.com/keys',
+      modelHint: 'Modelos recomendados: llama-3.1-70b-versatile, llama-3.1-8b-instant, mixtral-8x7b-32768',
+    },
+    openrouter: {
+      defaultModel: 'meta-llama/llama-3.1-8b-instruct:free',
+      keyPlaceholder: 'sk-or-v1-xxx...',
+      keyHint: 'Obtén tu key en openrouter.ai/keys (hay modelos gratis)',
+      modelHint: 'Modelos gratis: meta-llama/llama-3.1-8b-instruct:free, google/gemma-2-9b-it:free',
+    },
+    deepseek: {
+      defaultModel: 'deepseek-chat',
+      keyPlaceholder: 'sk-xxx...',
+      keyHint: 'Obtén tu key en platform.deepseek.com/api_keys',
+      modelHint: 'Modelos: deepseek-chat (general), deepseek-reasoner (razonamiento)',
+    },
+    gemini: {
+      defaultModel: 'gemini-1.5-flash',
+      keyPlaceholder: 'AIzaXxxx...',
+      keyHint: 'Obtén tu key en aistudio.google.com/app/apikey',
+      modelHint: 'Modelos: gemini-1.5-flash (rápido), gemini-1.5-pro (potente)',
+    },
+    openai: {
+      defaultModel: 'gpt-4o-mini',
+      keyPlaceholder: 'sk-xxx...',
+      keyHint: 'Obtén tu key en platform.openai.com/api-keys',
+      modelHint: 'Modelos: gpt-4o-mini (barato), gpt-4o, gpt-3.5-turbo',
+    },
+    anthropic: {
+      defaultModel: 'claude-3-5-haiku-20241022',
+      keyPlaceholder: 'sk-ant-xxx...',
+      keyHint: 'Obtén tu key en console.anthropic.com/settings/keys',
+      modelHint: 'Modelos: claude-3-5-haiku-20241022 (rápido), claude-3-5-sonnet-20241022',
+    },
+    github: {
+      defaultModel: 'gpt-4o-mini',
+      keyPlaceholder: 'ghp_xxx...',
+      keyHint: 'Obtén tu PAT en github.com/settings/tokens (scopes: repo, workflow, models)',
+      modelHint: 'Modelos: gpt-4o-mini, gpt-4o, mistral-large',
+    },
+  };
+
+  // Devuelve la config de un provider (para que streaming.js la use)
+  function providerConfig(provider, model, key) {
+    const cfg = PROVIDER_CONFIG[provider] || PROVIDER_CONFIG.groq;
+    return {
+      provider,
+      model: model || cfg.defaultModel,
+      apiKey: key,
+      endpoint: endpointFor(provider),
+      supportsStream: ['groq', 'openrouter', 'deepseek', 'openai'].includes(provider),
+      chatBody: (m, o) => ({ model: model || cfg.defaultModel, messages: m, stream: !!o.stream, temperature: o.temperature ?? 0.4, max_tokens: o.maxTokens ?? 1024 }),
+    };
+  }
+
+  // Devuelve el modelo por defecto para un provider
+  function defaultModelFor(provider) {
+    return (PROVIDER_CONFIG[provider] || PROVIDER_CONFIG.groq).defaultModel;
+  }
+
+  // Endpoint según provider
+  function endpointFor(provider) {
+    switch (provider) {
+      case 'groq': return 'https://api.groq.com/openai/v1/chat/completions';
+      case 'openrouter': return 'https://openrouter.ai/api/v1/chat/completions';
+      case 'deepseek': return 'https://api.deepseek.com/chat/completions';
+      case 'gemini': return `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`;
+      case 'openai': return 'https://api.openai.com/v1/chat/completions';
+      case 'anthropic': return 'https://api.anthropic.com/v1/messages';
+      case 'github': return 'https://models.inference.ai.azure.com/chat/completions';
+      default: return 'https://api.groq.com/openai/v1/chat/completions';
+    }
+  }
+
+  // Actualizar hints cuando cambia el provider
+  function updateProviderHints() {
+    const provider = document.getElementById('set-llm-provider')?.value || 'groq';
+    const cfg = PROVIDER_CONFIG[provider] || PROVIDER_CONFIG.groq;
+    const modelInput = document.getElementById('set-llm-model');
+    const keyInput = document.getElementById('set-llm-key');
+    const modelHint = document.getElementById('set-llm-model-hint');
+    const keyHint = document.getElementById('set-llm-key-hint');
+
+    if (modelInput && !modelInput.value) modelInput.value = cfg.defaultModel;
+    if (modelInput) modelInput.placeholder = cfg.defaultModel;
+    if (keyInput) keyInput.placeholder = cfg.keyPlaceholder;
+    if (modelHint) modelHint.textContent = cfg.modelHint;
+    if (keyHint) keyHint.textContent = cfg.keyHint;
+  }
+
   // Exponer globalmente
   window.renderSettings = renderSettings;
+  window.__providerConfig = providerConfig;
+  window.__defaultModelFor = defaultModelFor;
+
+  // ─── Hook para actualizar hints cuando se renderiza Settings ───
+  // Usamos un MutationObserver para detectar cuando el select cambia
+  const _origRenderSettings = renderSettings;
+  window.renderSettings = function() {
+    _origRenderSettings();
+    // Dar un tick para que el DOM esté listo
+    setTimeout(() => {
+      updateProviderHints();
+      const prov = document.getElementById('set-llm-provider');
+      if (prov && !prov.dataset.hooked) {
+        prov.addEventListener('change', updateProviderHints);
+        prov.dataset.hooked = '1';
+      }
+    }, 50);
+  };
 })();

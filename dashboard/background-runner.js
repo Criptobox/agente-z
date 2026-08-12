@@ -98,6 +98,81 @@
   }
 
   // ─── Ejecutar tarea con mock (modo demo o sin backend) ───
+  // ─── Chat con IA real (sin backend, directo a la API del provider) ───
+  async function executeLLMChat(id, payload) {
+    try {
+      updateTask(id, { progress: 20, description: 'Pensando…' });
+
+      const provider = localStorage.getItem('llm-provider') || 'groq';
+      const model = localStorage.getItem('llm-model') || (window.__defaultModelFor ? window.__defaultModelFor(provider) : 'llama-3.1-70b-versatile');
+      const apiKey = localStorage.getItem('llm-api-key') || '';
+      const fallbackProvider = localStorage.getItem('llm-fallback-provider') || '';
+
+      if (!apiKey) {
+        updateTask(id, { status: 'error', error: 'Configura tu API key en Settings antes de chatear.' });
+        return;
+      }
+
+      // Construir messages: system prompt + historial + mensaje actual
+      const systemPrompt = 'Eres el asistente conversacional de agent-brain, un sistema multi-agente en GitHub. Respondes preguntas del usuario sobre su sistema en lenguaje natural.\n\n## REGLAS\n- Responde en texto markdown natural, NO JSON.\n- Sé honesto: si no sabes algo, dilo.\n- Sé conciso: máx 3 párrafos. El usuario lee desde móvil.\n- Si la pregunta requiere crear una tarea, sugiérelo pero NO la crees.\n- Cita IDs concretos (TASK-XXXX, BUG-XXXX, LESSON-XXXX) cuando sea relevante.';
+
+      const history = (payload.history || []).map(h => ({
+        role: h.role || 'user',
+        content: h.content,
+      }));
+
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        ...history,
+        { role: 'user', content: payload.message || '' },
+      ];
+
+      updateTask(id, { progress: 50, description: 'Generando respuesta…' });
+
+      let fullText = '';
+
+      // Intentar provider primario
+      try {
+        fullText = await streamChat({ provider, model, apiKey, messages });
+      } catch (primaryErr) {
+        // Si hay fallback configurado, intentarlo
+        if (fallbackProvider) {
+          updateTask(id, { progress: 70, description: `Provider primario falló (${primaryErr.message}). Probando fallback ${fallbackProvider}…` });
+          const fallbackModel = window.__defaultModelFor ? window.__defaultModelFor(fallbackProvider) : 'llama-3.1-70b-versatile';
+          const fallbackKey = localStorage.getItem('llm-fallback-api-key') || apiKey;
+          fullText = await streamChat({ provider: fallbackProvider, model: fallbackModel, apiKey: fallbackKey, messages });
+        } else {
+          throw primaryErr;
+        }
+      }
+
+      updateTask(id, {
+        status: 'completed',
+        progress: 100,
+        result: {
+          agent: 'chat',
+          text: fullText || '(sin respuesta)',
+        },
+      });
+    } catch (err) {
+      updateTask(id, { status: 'error', error: err.message || 'Error desconocido en el chat' });
+    }
+  }
+
+  // Helper: llama a window.streaming.stream() y devuelve el texto completo
+  function streamChat({ provider, model, apiKey, messages }) {
+    return new Promise((resolve, reject) => {
+      let buffer = '';
+      window.streaming.stream(
+        messages,
+        { provider, model, apiKey, stream: true, temperature: 0.4, maxTokens: 1024 },
+        (token) => { buffer += token; },        // onToken
+        (full) => { resolve(full || buffer); },  // onDone
+        (err) => { reject(err); },               // onError
+      );
+    });
+  }
+
   function executeMock(id, type, payload) {
     const steps = getMockSteps(type, payload);
     let stepIdx = 0;
@@ -219,8 +294,11 @@
         // Polling: buscar el resultado en los Issues
         updateTask(id, { progress: 60, description: 'Esperando respuesta del agente...' });
         startPolling(id, ghRepo, ghToken);
+      } else if (type === 'chat' && window.streaming && typeof window.streaming.stream === 'function') {
+        // Sin backend PERO hay IA configurada — usar streaming directo
+        executeLLMChat(id, payload);
       } else {
-        // Sin backend — usar mock
+        // Sin backend ni IA — usar mock
         executeMock(id, type, payload);
       }
     } catch (err) {
