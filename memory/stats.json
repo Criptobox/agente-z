@@ -8,6 +8,7 @@
     "project": 1
   },
   "stale": 0,
-  "lowConfidence": 0,
-  "promotedRules": 0
+  "lowConf": 0,
+  "promotedRules": 0,
+  "generatedAt": "2026-08-12T05:39:00.702Z"
 }
