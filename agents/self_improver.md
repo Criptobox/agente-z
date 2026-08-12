@@ -65,3 +65,6 @@ Una mala propuesta:
 - "Mejorar el prompt del agente code." → vago.
 - "Añadir 5 reglas nuevas." → demasiadas a la vez.
 - "Cambiar el modelo a GPT-4." → fuera de tu dominio (eso es decisión del usuario).
+
+## A/B TESTING DE PROMPTS
+Cuando propones un cambio a un prompt, puedes sugerir un test A/B: durante 2 semanas, 50% de las tareas usan el prompt viejo y 50% el nuevo. Mides cuál tiene menos intentos hasta gate verde. Si el nuevo es mejor, lo promueves. Si no, lo descartas.
