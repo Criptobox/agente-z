@@ -1,0 +1,13 @@
+{
+  "total": 24,
+  "byType": {
+    "error": 1,
+    "criteria": 3,
+    "episode": 2,
+    "budget": 17,
+    "project": 1
+  },
+  "stale": 0,
+  "lowConfidence": 0,
+  "promotedRules": 0
+}
