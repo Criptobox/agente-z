@@ -4,148 +4,7 @@ El usuario pidió "llévalo al siguiente nivel". Estas son las mejoras que apliq
 
 ---
 
-## v0.2 — Mejoras de capacidades reales (agosto 2026)
-
-### 16. Nuevas tools web (web_search, web_fetch, huggingface_search)
-
-**Mejora**: 3 tools nuevas que dan a los agentes acceso a internet SIN API key ni coste.
-
-- `web_search`: usa DuckDuckGo HTML + fallback a SearXNG público. Devuelve top-8 resultados con title/url/snippet.
-- `web_fetch`: descarga una URL, convierte HTML a markdown (sin dependencias externas), respeta maxBytes configurable.
-- `huggingface_search`: API pública de HF Hub, busca modelos y datasets open source. Devuelve id, downloads, likes, license.
-
-**Por qué**: los agentes `research` y `analyst` estaban limitados a lo que ya estaba en el repo. Sin internet, no podían investigar errores de librerías, buscar advisories de seguridad, ni sugerir modelos alternativos. Con estas tools, el `analyst` puede auditar dependencias contra advisories reales, y `research` puede citar URLs de StackOverflow como evidencia.
-
-**Implementación**: cero dependencias npm. HTML parsing a mano con regex (suficiente para HTML semántico de DDG/SearXNG). User-Agent honesto identifica al agente. Timeouts e AbortSignal en todas las llamadas.
-
-**Coste**: 3 archivos nuevos (~600 líneas), 13 tests (8 unitarios + 5 de integración con red real).
-
----
-
-### 17. Tool ollama_generate + callOllama() en el router de modelos
-
-**Mejora**: 
-- Nueva tool `ollama_generate` que llama a un endpoint OpenAI-compatible (Ollama, llama.cpp server, vLLM local).
-- Nueva función `callOllama()` en `src/models.js` integrada al fallback chain.
-- Config nueva: `OLLAMA_ENDPOINT`, `OLLAMA_MODEL`, `OLLAMA_KEY`.
-
-**Por qué**: el sistema dependía 100% de APIs cloud (GitHub Models, Groq, Gemini). Si se agota la cuota gratuita de las tres, el sistema muere. Con Ollama como último eslabón del chain, el sistema puede caer a un modelo local (PC del usuario, o teléfono vía Cloudflare Tunnel) y seguir funcionando.
-
-**Caso de uso real**: el usuario tiene un Xiaomi 15 con Snapdragon 8 Elite y 12GB RAM. Con Termux + llama.cpp server, puede correr Qwen2.5-7B localmente y exponerlo vía Cloudflare Tunnel. GitHub Actions puede llamar a ese endpoint como fallback cuando las APIs cloud están rate-limited.
-
-**Coste**: 1 archivo nuevo + modificación de `src/models.js` (~30 líneas) y `src/config.js` (3 vars nuevas).
-
----
-
-### 18. Sanitización de comandos en gate_check
-
-**Mejora**: `gate_check` ahora valida comandos contra una whitelist antes de ejecutarlos.
-
-- Whitelist de prefijos permitidos: `npm`, `node`, `git`, `grep`, `python`, `go`, `cargo`, etc.
-- Blacklist de patrones absolutamente prohibidos: `rm -rf /`, `mkfs`, fork bombs, `curl | bash`, `shutdown`, `dd if=*of=/dev/`, etc.
-- Cualquier comando fuera de la whitelist se rechaza con `pass: false` y `reason` explicativo.
-
-**Por qué**: el `gate_check` anterior ejecutaba CUALQUIER comando con `execSync` sin sanitizar. Si un agente pasaba `command: "rm -rf /"`, lo ejecutaba. Aunque el agente se supone que es confiable, un prompt injection desde un Issue malicioso podría hacer que el agente propusiera un comando peligroso. Defense in depth.
-
-**Coste**: ~50 líneas en `gate_check.js`, 6 tests nuevos.
-
----
-
-### 19. diff_scan y security_scan ahora leen archivos en vez de ejecutar comandos
-
-**Mejora**: 
-- `diff_scan` y `security_scan` ya no ejecutan `command`. En su lugar, leen `files_to_scan` con `readFileSync` y aplican los patrones al contenido.
-- Nuevos patrones de seguridad: Slack token, generic API key.
-- `diff_scan` ahora detecta `debugger` además de `console.error`, `TODO`, `FIXME`, `XXX`.
-
-**Por qué (bug que corrige)**: antes, si `method` era `diff_scan` o `security_scan` PERO el agente no pasaba `command`, el código caía al `else if (expect)` final y hacía cosas raras. Además, la lógica evaluaba `expect` antes de los métodos especiales, lo que podía dar falsos positivos. Ahora cada método tiene su flujo claro.
-
-**Coste**: refactor de ~80 líneas, 6 tests nuevos.
-
----
-
-### 20. Helper compartido de parseo JSON (`src/utils/json.js`)
-
-**Mejora**: 
-- Nuevo módulo `src/utils/json.js` con `extractJSON(text)` y `parseAgentJSON(text)`.
-- 3 niveles de limpieza: directo → limpiar escapes → quitar trailing commas.
-- Todos los agentes (devil, learner, self_improver, diarist, orchestrator, runner) ahora usan este helper en vez de `indexOf('{')` manual.
-
-**Por qué (bug que corrige)**: el patrón `const first = raw.indexOf('{'); const last = raw.lastIndexOf('}'); JSON.parse(raw.slice(first, last + 1))` estaba duplicado en 5 archivos. Si el modelo devolvía texto sin `{`, `first === -1` y `raw.slice(-1, 0)` daba algo raro que rompía sin mensaje útil. El helper unifica la lógica y da errores claros.
-
-**Coste**: 1 archivo nuevo (~50 líneas), 12 tests nuevos.
-
----
-
-### 21. file_write con protección de paths del sistema
-
-**Mejora**: 
-- `file_write` ahora rechaza extensiones peligrosas: `.env`, `.sh`, `.exe`, `.bat`, `.cmd`, `.ps1`.
-- Rechaza paths del sistema: `.git/`, `.github/workflows/`, `node_modules/`.
-- Devuelve `append: bool` en la respuesta para confirmar el modo.
-
-**Por qué**: un agente con permiso `write` podría sobreescribir `.github/workflows/orchestrator.yml` o inyectar código en `.env`. Aunque los agentes se supone que son confiables, defense in depth. Si un agente necesita modificar un workflow, debe hacerlo vía PR (como `self_improver`).
-
-**Coste**: ~20 líneas, sin tests nuevos (cubierto por tests existentes).
-
----
-
-### 22. file_read con límite de tamaño configurable
-
-**Mejora**: 
-- `file_read` ahora usa `statSync` real (no el stub `{size:0}` que tenía antes).
-- Rechaza archivos > `maxBytes` (default 512KB) con error claro.
-- Devuelve `size` y `lines` reales.
-
-**Por qué (bug que corrige)**: la línea `const stat = existsSync(full) ? { size: 0 } : null;` era código muerto — siempre devolvía `{size:0}` o null, no usaba el stat real. Además, un agente podía pedir `file_read` sobre un archivo de 50MB y saturar el contexto del modelo.
-
-**Coste**: ~10 líneas.
-
----
-
-### 23. Bug en budget.js: tasks_throttled siempre devolvía 0
-
-**Mejora**: ahora capturamos `tasks.length` ANTES de marcarlas como throttled.
-
-**Por qué (bug que corrige)**: el código original llamaba `loadThrottleableTasks()` DOS veces: una para throttlear, otra para contar. Pero después de `throttleTask(t)`, las tareas tienen `status: 'throttled'`, no `'in_progress'`, así que el segundo llamado siempre devolvía `[]`. Resultado: el snapshot de budget siempre decía `tasks_throttled: 0` aunque hubiera 10 tareas throttleadas.
-
-**Coste**: 3 líneas.
-
----
-
-### 24. Bug en orchestrator.js: handleApprove parseaba index.json como tarea
-
-**Mejora**: ahora filtra `f === 'index.json'` y `f.startsWith('TASK-')`.
-
-**Por qué (bug que corrige)**: `handleApprove` listaba todos los `.json` en `tasks/` y los parseaba como tareas. Pero `tasks/index.json` (generado por `reindex.js`) tiene formato distinto (`{tasks: [...], generatedAt: ...}`), y al parsearlo como tarea fallaba silenciosamente. Ahora solo se procesan archivos `TASK-XXXX.json`.
-
-**Coste**: 2 líneas.
-
----
-
-### 25. Bug en devil.js: JSON.parse del body sin try/catch
-
-**Mejora**: envoltorio IIFE con try/catch que devuelve `[]` si el body no es JSON válido.
-
-**Por qué (bug que corrige)**: `JSON.parse(lastEpisode.body).reused_memory || []` revienta si el body no es JSON válido. Algunos episodios viejos tenían body en formato markdown, no JSON. El devil crasheaba al intentar leerlos.
-
-**Coste**: 8 líneas.
-
----
-
-### 26. Bug en chat.js y diarist.js: usaban campos inexistentes del frontmatter
-
-**Mejora**: ahora usan `created` (campo que sí existe) con fallback a `date` y `headline` con fallback a `title`.
-
-**Por qué (bug que corrige)**: `ctx.lastDiary.date` y `ctx.lastDiary.headline` no existen — el diario se guarda como markdown con frontmatter, los campos reales son `created` y `title`. Mismo con `lastBudget`. Mostraba `(sin headline)` y `(?)` siempre.
-
-**Coste**: 4 líneas.
-
----
-
-## v0.1 — Mejoras originales
-
-### 1. Tests unitarios del núcleo
+## 1. Tests unitarios del núcleo
 
 **Spec**: no menciona tests del propio sistema.
 **Mejora**: `tests/` con cobertura de `memory.js`, `context.js`, `models.js`, `devil.js` + smoke test end-to-end.
@@ -156,7 +15,7 @@ El usuario pidió "llévalo al siguiente nivel". Estas son las mejoras que apliq
 
 ---
 
-### 2. Modo DRY_RUN para desarrollo local
+## 2. Modo DRY_RUN para desarrollo local
 
 **Spec**: asume que todo corre en GitHub Actions con token real.
 **Mejora**: `DRY_RUN=1` hace que `models.js` devuelva respuestas mockeadas deterministas. Permite correr el sistema localmente sin GitHub ni token.
@@ -167,7 +26,7 @@ El usuario pidió "llévalo al siguiente nivel". Estas son las mejoras que apliq
 
 ---
 
-### 3. Embeddings con fallback determinista en DRY_RUN
+## 3. Embeddings con fallback determinista en DRY_RUN
 
 **Spec**: embeddings vienen de GitHub Models.
 **Mejora**: en DRY_RUN, `embed()` genera un vector de 16 dims con `simpleHash(text)`. No es real pero es estable — dos textos iguales dan el mismo vector.
@@ -176,7 +35,7 @@ El usuario pidió "llévalo al siguiente nivel". Estas son las mejoras que apliq
 
 ---
 
-### 4. Rate limit handling explícito en `models.js`
+## 4. Rate limit handling explícito en `models.js`
 
 **Spec**: menciona "fallback obligatorio desde el día 1" pero no detalla cómo.
 **Mejora**: la cadena de fallback es explícita:
@@ -184,8 +43,7 @@ El usuario pidió "llévalo al siguiente nivel". Estas son las mejoras que apliq
 2. GitHub Models secundario
 3. Groq (si hay key)
 4. Gemini (si hay key)
-5. Ollama local (si hay OLLAMA_ENDPOINT) — NUEVO en v0.2
-6. DRY_RUN (si está activado)
+5. DRY_RUN (si está activado)
 
 Cada llamada cuenta tokens para el budget agent. Los 429 y 5xx caen al siguiente. Los 4xx también (puede ser modelo deprecado).
 
@@ -193,9 +51,120 @@ Cada llamada cuenta tokens para el budget agent. Los 429 y 5xx caen al siguiente
 
 ---
 
-### 5-15. (Mejoras anteriores sin cambio)
+## 5. `tasks/index.json` generado para el dashboard
 
-Ver historial del repo para las mejoras 5-15 (índices para dashboard, criterios sembrados, parser YAML ligero, etc.).
+**Spec**: el dashboard lee `memory/index.json`. Pero las tareas viven en `tasks/*.json` separados y GitHub Pages no puede listar directorios.
+**Mejora**: `reindex.js` genera también `tasks/index.json` con la lista de IDs. El dashboard lo usa para saber qué tareas cargar.
+
+**Por qué**: sin esto, el dashboard no puede mostrar la lista de tareas activas — Pages no tiene API de listing.
+
+**TODO**: el `reindex.js` actual no genera este archivo. Lo añado en la próxima iteración. Por ahora el dashboard asume `TASK-0001` como fallback.
+
+---
+
+## 6. `memory/diary/index.json` y `memory/budget/index.json` para el dashboard
+
+**Spec**: no menciona cómo el dashboard encuentra la última entrada de diario o budget.
+**Mejora**: `reindex.js` genera índices para estos dos subdirectorios. El dashboard los usa para encontrar el archivo más reciente.
+
+**Por qué**: mismo problema que #5. Sin índice, el dashboard no puede saber qué archivo cargar.
+
+**TODO**: pendiente de implementar en `reindex.js`.
+
+---
+
+## 7. Criterios del usuario sembrados desde el arranque
+
+**Spec**: la memoria de criterio es idea del usuario, no del spec. Sin semilla, el sistema arranca vacío y tarda semanas en aprender preferencias.
+**Mejora**: sembré 3 criterios basados en la nota del usuario:
+- `CRIT-0001`: prefiere archivos completos sobre snippets
+- `CRIT-0002`: trabaja mobile-only en 3G
+- `CRIT-0003`: odia `!important` acumulado
+
+**Por qué**: el usuario ya declaró estas preferencias. No esperar a que el sistema las "descubra" — arrancar con ellas cargadas es más honesto y más útil.
+
+---
+
+## 8. Frontmatter parser ligero sin dependencias
+
+**Spec**: usa YAML frontmatter pero no especifica parser.
+**Mejora**: `parseFrontmatter` y `stringifyFrontmatter` en `memory.js` son implementaciones caseras (~80 líneas) que soportan strings, números, booleans, null y arrays. No soportan YAML complejo (anidados, multiline strings) — a propósito.
+
+**Por qué**: cero dependencias = cero `npm install` = el workflow arranca más rápido y el repo pesa menos. El YAML que necesitamos es trivial — no justifica traer `js-yaml`.
+
+**Trade-off**: si algún día necesitamos frontmatter anidado, añadimos `js-yaml`. Pero la complejidad de los esquemas actuales no lo requiere.
+
+---
+
+## 9. `gate_check` con detección de secretos integrada
+
+**Spec**: `security_scan` se menciona como método de gate pero sin detalle.
+**Mejora**: `gate_check` implementa `security_scan` con regexes para:
+- OpenAI keys: `sk-[a-zA-Z0-9]{20,}`
+- GitHub PATs: `ghp_[a-zA-Z0-9]{30,}`
+- AWS keys: `AKIA[0-9A-Z]{16}`
+- Private keys: `-----BEGIN (RSA |EC )?PRIVATE KEY-----`
+
+Y `diff_scan` para patrones prohibidos: `console.error`, `TODO`, `FIXME`, `XXX`.
+
+**Por qué**: sin esto, los gates de seguridad son placeholders. Con esto, ya funcionan desde el día 1.
+
+---
+
+## 10. `concurrency` groups en workflows
+
+**Spec**: no menciona.
+**Mejora**: cada workflow tiene `concurrency.group` basado en el ID de tarea. Si se dispara dos veces el mismo workflow para la misma tarea, no se cancela (cancel-in-progress: false) pero se encola.
+
+**Por qué**: sin esto, dos triggers del orchestrator para el mismo Issue pueden correr en paralelo y escribir la tarea dos veces.
+
+---
+
+## 11. `concurrency.cancel-in-progress: false`
+
+**Espec**: no menciona.
+**Mejora**: a propósito NO cancelamos jobs en progreso. Si el orchestrator se dispara dos veces seguidas, el segundo job espera al primero.
+
+**Por qué**: en un sistema que escribe memoria, cancelar un job a media escritura puede dejar archivos corruptos. Preferimos encolar.
+
+---
+
+## 12. `permissions` mínimas en cada workflow
+
+**Spec**: menciona `permissions: models: read` pero no detalla por workflow.
+**Mejora**: cada workflow declara solo los permisos que necesita:
+- `orchestrator.yml`: `contents: write, issues: write, models: read, actions: write`
+- `devil.yml`: `contents: write, issues: write, models: read` (sin actions — no despacha)
+- `self-improve.yml`: `contents: write, pull-requests: write, models: read`
+
+**Por qué**: principio de mínimo privilegio. Si un workflow no necesita `actions: write`, no lo damos. Limita el daño si un workflow se compromete.
+
+---
+
+## 13. `dashboard/app.js` con fetch paralelo y graceful degradation
+
+**Spec**: "HTML estático en Pages leyendo memory/index.json".
+**Mejora**: el dashboard carga `stats.json`, `index.json`, `tasks/index.json`, `diary/index.json` y `budget/index.json` en paralelo con `Promise.all`. Si alguno falla (404), muestra empty state en esa sección sin romper las demás.
+
+**Por qué**: en 3G, cargar 5 archivos en secuencia tarda 5× más que en paralelo. Y si el reindex aún no ha generado `diary/index.json`, el dashboard no debe romper — debe mostrar "aún no hay entradas".
+
+---
+
+## 14. `theme-aware` (dark/light) en el dashboard
+
+**Spec**: no menciona.
+**Mejora**: CSS variables con `@media (prefers-color-scheme: light)`. El dashboard se adapta al tema del sistema del usuario.
+
+**Por qué**: en móvil, el modo dark ahorra batería y es más cómodo de noche. Sin esto, el dashboard siempre se ve dark.
+
+---
+
+## 15. `nextId()` que respeta prefijos por tipo
+
+**Spec**: no detalla cómo se generan los IDs.
+**Mejora**: `nextId(type)` devuelve `BUG-0001`, `DEC-0001`, etc. según el tipo. Lee los existentes y devuelve el siguiente.
+
+**Por qué**: sin esto, dos agentes escribiendo simultáneamente pueden generar el mismo ID. Con esto, cada tipo tiene su namespace y el conflicto es menos probable.
 
 ---
 
@@ -216,30 +185,11 @@ Ver historial del repo para las mejoras 5-15 (índices para dashboard, criterios
 ### Framework web (Next.js, Astro) para el dashboard
 **Descartado**: HTML estático + JS vainilla = cero build step = cero dependencias = funciona en GitHub Pages sin más. No justifica un framework.
 
-### Usar Turndown o Cheerio para HTML parsing
-**Descartado en v0.2**: añadiría dependencias npm. El parser regex de `web_fetch` es suficiente para HTML semántico de MDN, React docs, GitHub READMEs. Si se necesita parsing más robusto en el futuro, se reconsidera.
-
-### Usar Brave Search API en vez de DuckDuckGo HTML
-**Descartado**: requiere API key. La filosofía del proyecto es "coste cero, sin servidor, sin registro". DuckDuckGo + SearXNG bastan para el 90% de casos.
-
 ---
 
-## Resumen v0.2
+## Resumen
 
-10 mejoras nuevas en v0.2 (16-25), todas pequeñas, ninguna cambia la arquitectura del spec. El sistema resultante es:
-- **Conectado a internet** (web_search, web_fetch, huggingface_search)
-- **Con inferencia local** (ollama_generate + callOllama en el fallback chain)
-- **Más seguro** (whitelist de comandos, paths protegidos, secret scanning mejorado)
-- **Más robusto** (parseo JSON unificado, sin crashes en episodios viejos)
-- **Más observable** (métricas correctas de tareas throttleadas)
-
-Si alguna de estas mejoras no te encaja, se borra y se acaba. Ninguna es acoplada al núcleo.
-
----
-
-## Resumen v0.1
-
-15 mejoras originales (1-15), todas pequeñas, ninguna cambia la arquitectura del spec. El sistema resultante es:
+15 mejoras, todas pequeñas, ninguna cambia la arquitectura del spec. El sistema resultante es:
 - **Testeable** (smoke + unit tests)
 - **Iterable localmente** (DRY_RUN)
 - **Resiliente** (fallback chain, rate limit handling)

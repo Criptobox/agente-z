@@ -2,7 +2,7 @@
 <html lang="es" data-theme="dark">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <meta name="description" content="Sistema multi-agente con memoria compartida — panel de control premium">
 
   <!-- PWA -->
@@ -10,9 +10,6 @@
   <meta name="theme-color" content="#0b0d12" media="(prefers-color-scheme: dark)">
   <meta name="theme-color" content="#fbfbfc" media="(prefers-color-scheme: light)">
   <meta name="color-scheme" content="dark light">
-
-  <!-- CSP estricta: solo self, sin inline scripts, sin eval -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https://api.github.com; form-action 'self'; base-uri 'self'; frame-ancestors 'none';">
 
   <!-- iOS PWA -->
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -173,6 +170,18 @@
           </span>
           <span class="nav__label">Inventario</span>
         </button>
+        <button class="nav__item" data-target="graph">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="12" x2="5" y2="5"/><line x1="12" y1="12" x2="19" y2="5"/><line x1="12" y1="12" x2="5" y2="19"/><line x1="12" y1="12" x2="19" y2="19"/></svg>
+          </span>
+          <span class="nav__label">Grafo</span>
+        </button>
+        <button class="nav__item" data-target="settings">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </span>
+          <span class="nav__label">Settings</span>
+        </button>
       </nav>
 
       <div class="sidebar__footer">
@@ -222,31 +231,39 @@
           <button class="icon-btn icon-btn--ghost" id="refresh-btn" aria-label="Recargar">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           </button>
-          <button class="icon-btn icon-btn--ghost" id="settings-btn" aria-label="Configuración" title="Configurar PAT y repo">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <button class="topbar__notif" id="notif-btn" aria-label="Notificaciones" title="Notificaciones">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="topbar__notif-badge" id="notif-badge" hidden>0</span>
           </button>
           <button class="btn btn--primary" id="install-btn" hidden>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <span>Instalar</span>
           </button>
+          <div class="topbar__user" id="topbar-user" hidden>
+            <div class="topbar__user-avatar" id="topbar-user-avatar">Z</div>
+            <div>
+              <div class="topbar__user-name" id="topbar-user-name">Invitado</div>
+              <div class="topbar__user-role">operador</div>
+            </div>
+          </div>
         </div>
       </header>
 
       <!-- Scrollable content -->
       <div class="content" id="content">
 
-        <!-- ═══ VISTA GENERAL ═══ -->
+        <!-- ═══ VISTA GENERAL — TiendaMax premium layout ═══ -->
         <section class="view view--overview is-active" id="view-overview">
 
-          <!-- Hero: KPI grid + system pulse -->
-          <div class="hero">
+          <!-- Premium hero header -->
+          <div class="hero hero--premium">
             <div class="hero__head">
               <div>
                 <div class="hero__eyebrow">
                   <span class="pulse-dot" id="hero-pulse"></span>
                   <span id="hero-eyebrow-text">Sistema activo</span>
                 </div>
-                <h2 class="hero__title" id="hero-title">Memoria del sistema</h2>
+                <h2 class="hero__title" id="hero-title">Panel de control</h2>
                 <p class="hero__subtitle" id="hero-subtitle">Leyendo memoria compartida…</p>
               </div>
               <div class="hero__sparkline" id="hero-sparkline">
@@ -266,66 +283,186 @@
                 </div>
               </div>
             </div>
+          </div>
 
-            <div class="hero__grid" id="stats-grid">
-              <div class="stat-card stat-card--skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
-              <div class="stat-card stat-card--skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
-              <div class="stat-card stat-card--skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
-              <div class="stat-card stat-card--skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+          <!-- 5-column KPI grid (TiendaMax style) -->
+          <div class="kpi-grid" id="kpi-grid">
+            <div class="kpi-card kpi-card--purple is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--cyan is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--green is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--amber is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--pink is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+          </div>
+
+          <!-- Quick actions grid -->
+          <div class="quick-actions" id="quick-actions">
+            <button class="quick-action quick-action--purple" data-action="analyze">
+              <span class="quick-action__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg></span>
+              <span class="quick-action__label">Analizar repo</span>
+            </button>
+            <button class="quick-action quick-action--green" data-action="tasks">
+              <span class="quick-action__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+              <span class="quick-action__label">Ver tareas</span>
+            </button>
+            <button class="quick-action quick-action--pink" data-action="memory">
+              <span class="quick-action__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
+              <span class="quick-action__label">Explorar memoria</span>
+            </button>
+            <button class="quick-action quick-action--amber" data-action="chat">
+              <span class="quick-action__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+              <span class="quick-action__label">Preguntar al agente</span>
+            </button>
+            <button class="quick-action quick-action--blue" data-action="graph">
+              <span class="quick-action__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="12" x2="5" y2="5"/><line x1="12" y1="12" x2="19" y2="5"/><line x1="12" y1="12" x2="5" y2="19"/><line x1="12" y1="12" x2="19" y2="19"/></svg></span>
+              <span class="quick-action__label">Ver grafo</span>
+            </button>
+            <button class="quick-action quick-action--cyan" data-action="inventory">
+              <span class="quick-action__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
+              <span class="quick-action__label">Inventario</span>
+            </button>
+            <button class="quick-action quick-action--red" data-action="errors">
+              <span class="quick-action__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span>
+              <span class="quick-action__label">Errores</span>
+            </button>
+          </div>
+
+          <!-- Charts row: activity line chart + memory donut -->
+          <div class="charts-row">
+            <div class="chart-card">
+              <div class="chart-card__header">
+                <div>
+                  <h3 class="chart-card__title">Actividad del sistema</h3>
+                  <div class="chart-card__sub">Memorias creadas · últimos 14 días</div>
+                </div>
+                <div class="chart-card__legend">
+                  <span class="chart-card__legend-item"><span class="chart-card__legend-dot" style="background:#8b5cf6"></span>Memorias</span>
+                  <span class="chart-card__legend-item"><span class="chart-card__legend-dot" style="background:#06b6d4"></span>Tareas</span>
+                </div>
+              </div>
+              <div class="chart-card__canvas-wrap">
+                <canvas id="chart-activity"></canvas>
+              </div>
+            </div>
+
+            <div class="chart-card donut-card">
+              <div class="chart-card__header">
+                <div>
+                  <h3 class="chart-card__title">Distribución de memoria</h3>
+                  <div class="chart-card__sub">Por tipo de recuerdo</div>
+                </div>
+              </div>
+              <div class="donut-card__body">
+                <div class="donut-card__svg-wrap" id="donut-wrap">
+                  <svg viewBox="0 0 120 120" id="donut-svg">
+                    <defs>
+                      <linearGradient id="donutGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#8b5cf6"/>
+                        <stop offset="100%" stop-color="#06b6d4"/>
+                      </linearGradient>
+                    </defs>
+                    <circle cx="60" cy="60" r="48" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="14"/>
+                    <g id="donut-segments"></g>
+                  </svg>
+                  <div class="donut-card__center">
+                    <div class="donut-card__center-value" id="donut-total">—</div>
+                    <div class="donut-card__center-label">memorias</div>
+                  </div>
+                </div>
+                <div class="donut-card__legend" id="donut-legend">
+                  <div class="skeleton skeleton--text"></div>
+                  <div class="skeleton skeleton--text"></div>
+                  <div class="skeleton skeleton--text skeleton--short"></div>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- 2-column layout below hero -->
-          <div class="grid-2">
-
-            <!-- Tasks preview -->
-            <div class="panel">
-              <div class="panel__header">
-                <h3 class="panel__title">Tareas activas</h3>
-                <a class="panel__link" data-target="tasks">ver todas →</a>
+          <!-- Bottom row: tasks table + AI center -->
+          <div class="bottom-row">
+            <div class="data-table-card">
+              <div class="data-table-card__header">
+                <h3 class="data-table-card__title">
+                  <span class="data-table-card__title-icon">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  </span>
+                  Tareas recientes
+                </h3>
+                <div class="data-table-card__actions">
+                  <button class="data-table-card__action is-active" data-tfilter="all">Todas</button>
+                  <button class="data-table-card__action" data-tfilter="in_progress">En progreso</button>
+                  <button class="data-table-card__action" data-tfilter="stuck">Stuck</button>
+                  <button class="data-table-card__action" data-tfilter="handoff">Handoff</button>
+                </div>
               </div>
-              <div class="panel__body" id="overview-tasks">
-                <div class="skeleton skeleton--text"></div>
-                <div class="skeleton skeleton--text"></div>
-              </div>
-            </div>
-
-            <!-- Diary preview -->
-            <div class="panel">
-              <div class="panel__header">
-                <h3 class="panel__title">Último diario</h3>
-                <a class="panel__link" data-target="diary">ver histórico →</a>
-              </div>
-              <div class="panel__body" id="overview-diary">
-                <div class="skeleton skeleton--text"></div>
-                <div class="skeleton skeleton--text"></div>
-                <div class="skeleton skeleton--text skeleton--short"></div>
-              </div>
-            </div>
-
-            <!-- Budget preview -->
-            <div class="panel">
-              <div class="panel__header">
-                <h3 class="panel__title">Presupuesto</h3>
-                <a class="panel__link" data-target="budget">detalle →</a>
-              </div>
-              <div class="panel__body" id="overview-budget">
-                <div class="skeleton skeleton--text"></div>
+              <div style="overflow-x:auto">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Meta</th>
+                      <th>Agente</th>
+                      <th>Progreso</th>
+                      <th>Estado</th>
+                      <th class="text-right">Intento</th>
+                    </tr>
+                  </thead>
+                  <tbody id="overview-tasks-table">
+                    <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted)">Cargando tareas…</td></tr>
+                  </tbody>
+                </table>
               </div>
             </div>
 
-            <!-- Memory distribution -->
-            <div class="panel">
-              <div class="panel__header">
-                <h3 class="panel__title">Distribución de memoria</h3>
-                <a class="panel__link" data-target="memory">memoria →</a>
+            <div class="ai-center" id="ai-center">
+              <div class="ai-center__header">
+                <h3 class="ai-center__title">
+                  <span class="ai-center__title-dot"></span>
+                  Centro de IA
+                </h3>
+                <span class="ai-chip"><span class="ai-chip__dot"></span>10 agentes</span>
               </div>
-              <div class="panel__body" id="overview-memory">
-                <div class="skeleton skeleton--text"></div>
+              <div class="ai-center__body">
+                <div class="ai-center__ring">
+                  <svg viewBox="0 0 120 120">
+                    <defs>
+                      <linearGradient id="aiGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#10b981"/>
+                        <stop offset="50%" stop-color="#3b82f6"/>
+                        <stop offset="100%" stop-color="#8b5cf6"/>
+                      </linearGradient>
+                    </defs>
+                    <circle class="ai-center__ring-track" cx="60" cy="60" r="50"/>
+                    <circle class="ai-center__ring-progress" id="ai-ring-progress" cx="60" cy="60" r="50" stroke-dasharray="314" stroke-dashoffset="314"/>
+                  </svg>
+                  <div class="ai-center__ring-value">
+                    <div class="ai-center__ring-num" id="ai-ring-num">0%</div>
+                    <div class="ai-center__ring-label">salud</div>
+                  </div>
+                </div>
+                <div class="ai-center__info">
+                  <h4 class="ai-center__info-title">Sistema operativo</h4>
+                  <p class="ai-center__info-desc" id="ai-info-desc">10 agentes listos. Memoria compartida sincronizada. Cuota diaria disponible.</p>
+                  <button class="ai-center__cta" id="ai-cta">
+                    <span>Optimizar mi sistema</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="ai-center__chips" id="ai-chips">
+                <span class="ai-chip ai-chip--success"><span class="ai-chip__dot"></span>orquestador activo</span>
+                <span class="ai-chip ai-chip--warning"><span class="ai-chip__dot"></span><span id="ai-chip-stuck">0</span> tareas stuck</span>
+                <span class="ai-chip"><span class="ai-chip__dot"></span><span id="ai-chip-budget">100%</span> cuota</span>
               </div>
             </div>
-
           </div>
+
+          <!-- Hidden legacy stats grid for backward compat with app.js renderStats() -->
+          <div class="hero__grid" id="stats-grid" hidden></div>
+          <div id="overview-tasks" hidden></div>
+          <div id="overview-diary" hidden></div>
+          <div id="overview-budget" hidden></div>
+          <div id="overview-memory" hidden></div>
+
         </section>
 
         <!-- ═══ TAREAS ═══ -->
@@ -423,7 +560,13 @@
               </div>
             </div>
             <form class="chat__input-wrap" id="chat-form">
-              <input class="chat__input" type="text" id="chat-input" placeholder="Pregunta lo que quieras…" autocomplete="off">
+              <button class="chat__mic" type="button" id="chat-mic" aria-label="Hablar" title="Hablar (voz)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              </button>
+              <input class="chat__input" type="text" id="chat-input" placeholder="Escribe o habla…" autocomplete="off">
+              <button class="chat__speak-btn" type="button" id="chat-speak" aria-label="Leer respuesta" title="Leer respuesta en voz alta">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+              </button>
               <button class="chat__send" type="submit" id="chat-send" aria-label="Enviar">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
               </button>
@@ -633,51 +776,6 @@
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════════
-       SETTINGS MODAL — configurar PAT + repo
-       ═══════════════════════════════════════════════════════════════ -->
-  <div class="modal" id="settings-modal" hidden>
-    <div class="modal__backdrop" data-close></div>
-    <div class="modal__panel" role="dialog" aria-label="Configuración">
-      <div class="modal__header">
-        <h2 class="modal__title">⚙️ Configuración</h2>
-        <button class="icon-btn icon-btn--ghost" data-close aria-label="Cerrar">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-      <div class="modal__body">
-        <p class="modal__desc">Necesitas un <strong>PAT de GitHub</strong> con permiso <code>repo</code> y <code>workflow</code> para que el dashboard pueda crear Issues en tu nombre. Crea uno en <a href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=agent-brain-dashboard" target="_blank" rel="noopener">github.com/settings/tokens</a>.</p>
-        <p class="modal__desc" style="margin-top: 8px; font-size: 12px; opacity: 0.7;">🔒 El PAT se guarda solo en tu navegador (localStorage). No se envía a ningún servidor externo. Cierra la sesión borrando los datos del sitio.</p>
-
-        <div class="field" style="margin-top: 16px;">
-          <label for="settings-repo" class="field__label">Repo de agent-brain</label>
-          <input type="text" id="settings-repo" class="input" placeholder="tu-usuario/agent-brain" autocomplete="off" spellcheck="false">
-          <small class="field__hint">Formato: <code>owner/name</code> — el repo donde está desplegado tu agent-brain.</small>
-        </div>
-
-        <div class="field" style="margin-top: 16px;">
-          <label for="settings-pat" class="field__label">PAT de GitHub</label>
-          <input type="password" id="settings-pat" class="input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false">
-          <small class="field__hint">Token con scope <code>repo</code> y <code>workflow</code>.</small>
-        </div>
-
-        <div class="field" style="margin-top: 16px;">
-          <label class="field__label">Estado actual</label>
-          <div id="settings-status" style="font-size: 13px; padding: 8px 12px; border-radius: 8px; background: var(--bg-elevated, #131720); border: 1px solid var(--border, #232a3b);">
-            <span id="settings-status-text">Verificando…</span>
-          </div>
-        </div>
-      </div>
-      <div class="modal__footer">
-        <button class="btn btn--ghost" data-close>Cancelar</button>
-        <button class="btn btn--primary" id="settings-save">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-          <span>Guardar</span>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════════════════════════════════════════════════════════════
        TASK DETAIL DRAWER
        ═══════════════════════════════════════════════════════════════ -->
   <div class="drawer" id="task-drawer" hidden>
@@ -764,8 +862,14 @@
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
   </button>
 
-  <script src="./streaming.js" defer></script>
-  <script src="./settings.js" defer></script>
+  <script src="./voice.js"></script>
+  <script src="./supabase-client.js"></script>
+  <script src="./background-runner.js"></script>
+  <script src="./streaming.js"></script>
+  <script src="./auth.js"></script>
+  <script src="./settings.js"></script>
+  <script src="./graph.js"></script>
   <script src="./app.js" defer></script>
+  <script src="./tiendamax.js" defer></script>
 </body>
 </html>

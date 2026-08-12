@@ -1,206 +1,96 @@
 // dashboard/streaming.js
 // Streaming de respuestas LLM — palabra por palabra como ChatGPT.
-// Soporta: Groq, OpenRouter, DeepSeek, OpenAI, Anthropic, Gemini, GitHub Models.
-// Fallback automático al provider secundario si el primario falla.
+// Funciona con Groq (streaming nativo) y con mocks en modo demo.
 
 (function() {
   'use strict';
 
-  // Lee la config guardada por settings.js
-  function getProviderConfig(provider, model, key) {
-    if (window.__providerConfig) return window.__providerConfig(provider, model, key);
-    // Fallback mínimo si settings.js no cargó todavía
-    switch (provider) {
-      case 'groq':
-        return {
-          endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-          headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-          chatBody: (m, o) => ({ model, messages: m, stream: !!o.stream, temperature: o.temperature ?? 0.4, max_tokens: o.maxTokens ?? 1024 }),
-          supportsStream: true,
-        };
-      case 'openrouter':
-        return {
-          endpoint: 'https://openrouter.ai/api/v1/chat/completions',
-          headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': location.origin, 'X-Title': 'agent-brain' },
-          chatBody: (m, o) => ({ model, messages: m, stream: !!o.stream, temperature: o.temperature ?? 0.4, max_tokens: o.maxTokens ?? 1024 }),
-          supportsStream: true,
-        };
-      case 'deepseek':
-        return {
-          endpoint: 'https://api.deepseek.com/v1/chat/completions',
-          headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-          chatBody: (m, o) => ({ model, messages: m, stream: !!o.stream, temperature: o.temperature ?? 0.4, max_tokens: o.maxTokens ?? 1024 }),
-          supportsStream: true,
-        };
-      case 'gemini':
-        return {
-          endpoint: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-          headers: { 'Content-Type': 'application/json' },
-          chatBody: (m, o) => ({
-            contents: m.filter(x => x.role !== 'system').map(x => ({ role: x.role === 'assistant' ? 'model' : 'user', parts: [{ text: x.content }] })),
-            systemInstruction: m.find(x => x.role === 'system') ? { parts: [{ text: m.find(x => x.role === 'system').content }] } : undefined,
-            generationConfig: { temperature: o.temperature ?? 0.4, maxOutputTokens: o.maxTokens ?? 1024 },
-          }),
-          supportsStream: false,
-        };
-      case 'openai':
-        return {
-          endpoint: 'https://api.openai.com/v1/chat/completions',
-          headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-          chatBody: (m, o) => ({ model, messages: m, stream: !!o.stream, temperature: o.temperature ?? 0.4, max_tokens: o.maxTokens ?? 1024 }),
-          supportsStream: true,
-        };
-      case 'anthropic':
-        return {
-          endpoint: 'https://api.anthropic.com/v1/messages',
-          headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-          chatBody: (m, o) => ({
-            model,
-            system: m.find(x => x.role === 'system')?.content || undefined,
-            messages: m.filter(x => x.role !== 'system').map(x => ({ role: x.role, content: x.content })),
-            max_tokens: o.maxTokens ?? 1024,
-            temperature: o.temperature ?? 0.4,
-          }),
-          supportsStream: false,
-        };
-      case 'github':
-        return {
-          endpoint: 'https://models.inference.ai.azure.com/chat/completions',
-          headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-          chatBody: (m, o) => ({ model, messages: m, temperature: o.temperature ?? 0.4, max_tokens: o.maxTokens ?? 1024 }),
-          supportsStream: false,
-        };
-      default:
-        return null;
-    }
-  }
+  // Stream desde Groq (compatible OpenAI streaming)
+  async function streamFromGroq(messages, opts, onToken, onDone, onError) {
+    const apiKey = localStorage.getItem('llm-api-key') || localStorage.getItem('GROQ_API_KEY') || '';
+    const model = opts.model || localStorage.getItem('llm-model') || 'llama-3.1-70b-versatile';
+    const provider = localStorage.getItem('llm-provider') || 'groq';
 
-  function getSavedSettings() {
-    return {
-      provider: localStorage.getItem('llm-provider') || 'groq',
-      model: localStorage.getItem('llm-model') || 'llama-3.1-70b-versatile',
-      key: localStorage.getItem('llm-api-key') || localStorage.getItem('GROQ_API_KEY') || '',
-      fallbackProvider: localStorage.getItem('llm-fallback-provider') || '',
-    };
-  }
-
-  // Llamada principal: intenta provider primario, si falla y hay fallback, lo intenta con ese.
-  async function stream(messages, opts, onToken, onDone, onError) {
-    const s = getSavedSettings();
-    if (!s.key) {
-      // Sin API key → modo demo
+    let endpoint, headers;
+    if (provider === 'groq') {
+      endpoint = 'https://api.groq.com/openai/v1/chat/completions';
+      headers = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+    } else if (provider === 'gemini') {
+      // Gemini no soporta streaming SSE estándar — fallback a no-stream
+      endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      headers = { 'Content-Type': 'application/json' };
+    } else {
+      // Sin provider configurado — usar mock
       return streamMock(messages, opts, onToken, onDone, onError);
     }
 
-    // Lista de intentos: primario + fallback (si hay y es distinto)
-    const attempts = [{ provider: s.provider, model: s.model, key: s.key }];
-    if (s.fallbackProvider && s.fallbackProvider !== s.provider) {
-      attempts.push({
-        provider: s.fallbackProvider,
-        model: window.__defaultModelFor ? window.__defaultModelFor(s.fallbackProvider) : 'llama-3.1-70b-versatile',
-        key: s.key,  // mismo key (OpenRouter suele ser multi; otros no — el test lo rechazará)
-      });
+    if (!apiKey) {
+      return streamMock(messages, opts, onToken, onDone, onError);
     }
 
-    let lastErr = null;
-    for (let i = 0; i < attempts.length; i++) {
-      const a = attempts[i];
-      try {
-        await streamOnce(a, messages, opts, onToken, onDone, onError, i > 0);
-        return;  // éxito
-      } catch (err) {
-        lastErr = err;
-        console.warn(`[streaming] ${a.provider} falló:`, err.message);
-        // Si fue abort por el usuario, no reintentar
-        if (err.name === 'AbortError') break;
-        // Si quedan intentos, notificar al usuario que estamos cayendo al fallback
-        if (i < attempts.length - 1 && onToken) {
-          onToken(`\n\n⚠️ ${a.provider} falló (${err.message.slice(0, 80)}), probando ${attempts[i+1].provider}…\n\n`, '');
-        }
+    try {
+      const body = provider === 'groq' ? {
+        model, messages, stream: true, temperature: opts.temperature || 0.4, max_tokens: opts.maxTokens || 1024,
+      } : {
+        contents: messages.filter(m => m.role !== 'system').map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+        systemInstruction: messages.find(m => m.role === 'system') ? { parts: [{ text: messages.find(m => m.role === 'system').content }] } : undefined,
+        generationConfig: { temperature: opts.temperature || 0.4, maxOutputTokens: opts.maxTokens || 1024 },
+      };
+
+      const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}: ${txt.slice(0, 200)}`);
       }
-    }
-    // Todos fallaron
-    if (onToken && lastErr) {
-      onToken(`\n\n❌ Todos los providers fallaron. Último error: ${lastErr.message.slice(0, 200)}\n\n`, '');
-    }
-    onError(lastErr || new Error('Streaming falló sin error específico'));
-  }
 
-  async function streamOnce(attempt, messages, opts, onToken, onDone, onError, isFallback) {
-    const cfg = getProviderConfig(attempt.provider, attempt.model, attempt.key);
-    if (!cfg) throw new Error(`Provider no soportado: ${attempt.provider}`);
+      if (provider === 'groq') {
+        // SSE streaming
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let fullText = '';
 
-    const useStream = cfg.supportsStream && opts.stream !== false;
-    const body = cfg.chatBody(messages, { ...opts, stream: useStream });
-
-    const res = await fetch(cfg.endpoint, {
-      method: 'POST',
-      headers: cfg.headers,
-      body: JSON.stringify(body),
-      signal: opts.signal,
-    });
-
-    if (!res.ok) {
-      const txt = await res.text().catch(() => '');
-      let detail = txt.slice(0, 300);
-      try { const j = JSON.parse(txt); detail = j.error?.message || j.message || detail; } catch {}
-      throw new Error(`HTTP ${res.status}: ${detail}`);
-    }
-
-    if (useStream && res.body) {
-      // SSE streaming (Groq, OpenRouter, DeepSeek, OpenAI)
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let fullText = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6).trim();
-          if (data === '[DONE]') continue;
-          try {
-            const parsed = JSON.parse(data);
-            // OpenRouter puede traer comentarios de ruteo; ignorarlos
-            const token = parsed.choices?.[0]?.delta?.content || '';
-            if (token) {
-              fullText += token;
-              onToken(token, fullText);
-            }
-          } catch {}
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const data = line.slice(6).trim();
+            if (data === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(data);
+              const token = parsed.choices?.[0]?.delta?.content || '';
+              if (token) {
+                fullText += token;
+                onToken(token, fullText);
+              }
+            } catch {}
+          }
         }
-      }
-      onDone(fullText);
-    } else {
-      // No-streaming (Gemini, Anthropic, GitHub Models, o stream desactivado)
-      const data = await res.json();
-      let text = '';
-      if (attempt.provider === 'gemini') {
-        text = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '';
-      } else if (attempt.provider === 'anthropic') {
-        text = data.content?.map(c => c.text).join('') || '';
+        onDone(fullText);
       } else {
-        text = data.choices?.[0]?.message?.content || '';
+        // Gemini no-stream fallback
+        const data = await res.json();
+        const text = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '';
+        // Simular streaming palabra por palabra
+        const words = text.split(' ');
+        let full = '';
+        for (const w of words) {
+          full += (full ? ' ' : '') + w;
+          onToken(w + ' ', full);
+          await new Promise(r => setTimeout(r, 30));
+        }
+        onDone(text);
       }
-      // Simular streaming palabra por palabra para mejor UX
-      const words = text.match(/\S+\s*/g) || [text];
-      let full = '';
-      for (const w of words) {
-        full += w;
-        onToken(w, full);
-        // ~30ms/palabra = ~33 palabras/segundo, comparable a lectura humana
-        await new Promise(r => setTimeout(r, 25));
-      }
-      onDone(text);
+    } catch (err) {
+      onError(err);
     }
   }
 
-  // Mock streaming para modo demo o sin API key
+  // Mock streaming para modo demo
   async function streamMock(messages, opts, onToken, onDone, onError) {
     const lastMsg = messages[messages.length - 1]?.content || '';
     const q = lastMsg.toLowerCase();
@@ -214,12 +104,11 @@
       response = '📅 **Último diario:**\n\n"Arreglado bug del carrito. 1 lección nueva sobre NaN."\n\n• TASK-0042 cerrada\n• Sin tareas STUCK';
     } else if (q.includes('analiz') || q.includes('repo')) {
       response = '🔍 Para analizar un repo, ve a la vista **Inventario** y pega la URL. Te mostraré productos agotados, stock bajo y más.';
-    } else if (!localStorage.getItem('llm-api-key')) {
-      response = '⚠️ **Modo demo** — no tienes API key configurada.\n\nVe a **Settings → Modelos de IA** y pega tu API key de Groq, OpenRouter, DeepSeek, Gemini, etc. Después del primer mensaje real, las respuestas vendrán en streaming palabra por palabra.\n\nMientras tanto, prueba preguntas como: "tareas stuck", "budget", "diario".';
     } else {
       response = 'Recibí tu mensaje. Estoy procesándolo en background. Cuando tenga una respuesta completa, aparecerá aquí.\n\n¿Qué más necesitas?';
     }
 
+    // Simular streaming palabra por palabra
     const words = response.split(/(\s+)/);
     let full = '';
     for (const w of words) {
@@ -265,6 +154,7 @@
 
     realtimeChannel = sb.realtime.subscribe('chat_messages', (payload) => {
       if (payload.eventType === 'INSERT' && payload.new?.role === 'assistant') {
+        // Mostrar respuesta en el chat en tiempo real
         if (window.addChatMessage) {
           window.addChatMessage('assistant', payload.new.content, payload.new.agent, payload.new.action_cards);
         }
@@ -272,12 +162,14 @@
     });
 
     sb.realtime.subscribe('tasks', (payload) => {
+      // Actualizar vista de tareas cuando cambian
       if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
         if (window.loadAll) window.loadAll();
       }
     });
 
     sb.realtime.subscribe('memories', (payload) => {
+      // Actualizar memoria cuando se añade nueva
       if (payload.eventType === 'INSERT') {
         if (window.loadAll) window.loadAll();
       }
@@ -301,7 +193,7 @@
 
   // ─── Exponer globalmente ───
   window.streaming = {
-    stream,
+    stream: streamFromGroq,
     parseCommand,
     getHelpText,
     initRealtime,
