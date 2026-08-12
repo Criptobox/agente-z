@@ -1,0 +1,44 @@
+# .github/workflows/diary.yml
+# Diario nocturno: a las 3 AM hora local escribe un resumen de una frase en un Issue.
+
+name: diary
+
+on:
+  schedule:
+    # 3:00 AM America/Havana = 7:00 AM UTC (UTC-4 en horario de verano)
+    # Ajusta según tu zona. Para America/Havana: UTC-5 (EST) o UTC-4 (EDT).
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  models: read
+
+jobs:
+  diary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Run diarist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          MODELS_PRIMARY: ${{ vars.MODELS_PRIMARY }}
+          MODELS_FALLBACK: ${{ vars.MODELS_FALLBACK }}
+          LOCALE: es
+          TIMEZONE: ${{ vars.TIMEZONE || 'America/Havana' }}
+        run: node src/agents/diarist.js
+
+      - name: Commit
+        run: |
+          git config user.name  "agent-diarist"
+          git config user.email "agent@bot"
+          git add memory/
+          git diff --staged --quiet || git commit -m "diarist: snapshot diario"
+          git pull --rebase origin main || (echo "⚠ conflictos en pull rebase, abortando push" && git rebase --abort && exit 1)
+          git push

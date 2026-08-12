@@ -1,0 +1,140 @@
+# .github/workflows/inventory-watch.yml
+# Vigilancia diaria de inventarios entre repos.
+# Compara productos de dos repos (configurados en variables) y notifica cambios.
+
+name: inventory-watch
+
+on:
+  schedule:
+    # 9 AM America/Havana = 1 PM UTC (EDT) / 2 PM UTC (EST)
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+    inputs:
+      repo_a:
+        description: 'Repo A (referencia, ej: axontech/axon-store)'
+        required: false
+      repo_b:
+        description: 'Repo B (a comparar, ej: tiendamax/tiendamax-web)'
+        required: false
+      path_a:
+        description: 'Path al archivo de productos en A (opcional)'
+        required: false
+      path_b:
+        description: 'Path al archivo de productos en B (opcional)'
+        required: false
+      issue_number:
+        description: 'Issue donde comentar (opcional, si vacío crea uno nuevo)'
+        required: false
+
+permissions:
+  contents: write
+  issues: write
+  models: read
+
+concurrency:
+  group: inventory-watch
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Determine repos to compare
+        id: repos
+        env:
+          INPUT_REPO_A: ${{ github.event.inputs.repo_a }}
+          INPUT_REPO_B: ${{ github.event.inputs.repo_b }}
+          INPUT_PATH_A: ${{ github.event.inputs.path_a }}
+          INPUT_PATH_B: ${{ github.event.inputs.path_b }}
+          INPUT_ISSUE: ${{ github.event.inputs.issue_number }}
+          VAR_REPO_A: ${{ vars.INVENTORY_REPO_A }}
+          VAR_REPO_B: ${{ vars.INVENTORY_REPO_B }}
+        run: |
+          # Priorizar input manual sobre variable configurada
+          REPO_A="${INPUT_REPO_A:-${VAR_REPO_A}}"
+          REPO_B="${INPUT_REPO_B:-${VAR_REPO_B}}"
+          # Validar formato owner/name para prevenir inyección en shell y path traversal
+          validate_repo() {
+            local v="$1" name="$2"
+            if [ -z "$v" ]; then return 0; fi
+            if ! echo "$v" | grep -qE '^[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$'; then
+              echo "ERROR: $name con formato inválido: $v"
+              exit 1
+            fi
+          }
+          validate_path() {
+            local v="$1" name="$2"
+            if [ -z "$v" ]; then return 0; fi
+            if ! echo "$v" | grep -qE '^[a-zA-Z0-9_./-]+$'; then
+              echo "ERROR: $name con caracteres no permitidos: $v"
+              exit 1
+            fi
+            case "$v" in ..|../*|*/../*) echo "ERROR: $name contiene .."; exit 1;; esac
+          }
+          validate_repo "$REPO_A" "repo_a"
+          validate_repo "$REPO_B" "repo_b"
+          validate_path "$INPUT_PATH_A" "path_a"
+          validate_path "$INPUT_PATH_B" "path_b"
+          validate_path "$INPUT_ISSUE" "issue_number"
+          # Exportar a GITHUB_OUTPUT (sin interpolación peligrosa)
+          echo "repo_a=$REPO_A" >> $GITHUB_OUTPUT
+          echo "repo_b=$REPO_B" >> $GITHUB_OUTPUT
+          echo "path_a=$INPUT_PATH_A" >> $GITHUB_OUTPUT
+          echo "path_b=$INPUT_PATH_B" >> $GITHUB_OUTPUT
+          echo "issue=$INPUT_ISSUE" >> $GITHUB_OUTPUT
+          echo "Comparando: $REPO_A vs $REPO_B"
+
+      - name: Skip if no repos configured
+        if: steps.repos.outputs.repo_a == '' || steps.repos.outputs.repo_b == ''
+        run: |
+          echo "⚠️ No hay repos configurados para comparar."
+          echo "Configura las variables INVENTORY_REPO_A e INVENTORY_REPO_B en Settings → Actions → Variables."
+          echo "Ejemplo:"
+          echo "  INVENTORY_REPO_A = axontech/axon-store"
+          echo "  INVENTORY_REPO_B = tiendamax/tiendamax-web"
+          exit 0
+
+      - name: Run inventory comparison
+        if: steps.repos.outputs.repo_a != '' && steps.repos.outputs.repo_b != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          TARGET_REPOS: ${{ vars.TARGET_REPOS }}
+          MODELS_PRIMARY: ${{ vars.MODELS_PRIMARY }}
+          MODELS_FALLBACK: ${{ vars.MODELS_FALLBACK }}
+          LOCALE: es
+          REPO_A: ${{ steps.repos.outputs.repo_a }}
+          REPO_B: ${{ steps.repos.outputs.repo_b }}
+          PATH_A: ${{ steps.repos.outputs.path_a }}
+          PATH_B: ${{ steps.repos.outputs.path_b }}
+          ISSUE_NUM: ${{ steps.repos.outputs.issue }}
+        run: |
+          # Construir args en bash desde env vars (sin interpolar expressions de GitHub)
+          ARGS=(--repoA="$REPO_A" --repoB="$REPO_B")
+          [ -n "$PATH_A" ] && ARGS+=(--pathA="$PATH_A")
+          [ -n "$PATH_B" ] && ARGS+=(--pathB="$PATH_B")
+          [ -n "$ISSUE_NUM" ] && ARGS+=(--issue="$ISSUE_NUM")
+          node src/inventory.js "${ARGS[@]}"
+
+      - name: Commit memory
+        if: success() && steps.repos.outputs.repo_a != ''
+        env:
+          REPO_A: ${{ steps.repos.outputs.repo_a }}
+          REPO_B: ${{ steps.repos.outputs.repo_b }}
+        run: |
+          git config user.name  "agent-inventory"
+          git config user.email "agent@bot"
+          git add memory/
+          git diff --staged --quiet || git commit -m "inventory: reporte $REPO_A vs $REPO_B"
+          for i in 1 2 3; do
+            if git pull --rebase origin main && git push; then exit 0; fi
+            echo "⚠ intento $i falló, reintentando en ${i}s..."
+            sleep $((i * 2))
+          done
+          echo "✗ no se pudo pushear tras 3 intentos"
+          exit 1

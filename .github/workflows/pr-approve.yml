@@ -1,0 +1,79 @@
+# .github/workflows/pr-approve.yml
+# Escucha comentarios /approve en Issues con tarea needs_human.
+# Reanuda el agente que pidió permiso.
+#
+# SEGURIDAD: solo OWNER, COLLABORATOR o MEMBER del repo pueden aprobar.
+# Antes cualquier usuario con permiso de comentar podía disparar /approve.
+
+name: pr-approve
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+jobs:
+  approve:
+    if: |
+      startsWith(github.event.comment.body, '/approve') &&
+      (
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'COLLABORATOR' ||
+        github.event.comment.author_association == 'MEMBER'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Reanudar tarea aprobada
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_NAME: issue_comment
+          APPROVING_USER: ${{ github.event.comment.user.login }}
+          APPROVING_ASSOC: ${{ github.event.comment.author_association }}
+        run: |
+          echo "Aprobado por @$APPROVING_USER ($APPROVING_ASSOC)"
+          node src/orchestrator.js
+
+      - name: Comentar confirmación
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: `✅ Aprobado por @${context.payload.comment.user.login}. Reanudando agente...`
+            });
+
+  deny:
+    if: |
+      startsWith(github.event.comment.body, '/approve') &&
+      !(
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'COLLABORATOR' ||
+        github.event.comment.author_association == 'MEMBER'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Avisar permiso insuficiente
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: `❌ @${context.payload.comment.user.login} no tiene permiso para aprobar (assoc=${context.payload.comment.author_association}). Solo OWNER, COLLABORATOR o MEMBER.`
+            });
