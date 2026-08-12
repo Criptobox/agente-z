@@ -17,7 +17,8 @@
     if (!view) {
       const content = document.getElementById('content');
       view = document.createElement('section');
-      view.className = 'view';
+      // BUGFIX (audit #1.1): include is-active so the section is visible when created.
+      view.className = 'view is-active';
       view.id = 'view-graph';
       view.innerHTML = `
         <div class="view__header">

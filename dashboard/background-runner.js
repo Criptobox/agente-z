@@ -186,7 +186,8 @@
     try {
       const edgeUrl = localStorage.getItem('agent-brain-edge-function-url');
       const ghToken = localStorage.getItem('agent-brain-pat');
-      const ghRepo = localStorage.getItem('agent-brain-repo') || localStorage.getItem('agent-brain-repo');
+      // BUGFIX (audit #1.11): tautological lookup. Fall back to TARGET_REPOS var.
+      const ghRepo = localStorage.getItem('agent-brain-repo') || localStorage.getItem('agent-brain-target-repos');
 
       if (edgeUrl) {
         // Edge Function de Supabase

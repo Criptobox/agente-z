@@ -165,17 +165,27 @@
   function updateAuthUI() {
     const authed = isAuthenticated();
     const email = localStorage.getItem('user-email') || '';
-    // Actualizar botón en el topbar
-    const installBtn = document.getElementById('install-btn');
-    if (authed && installBtn) {
-      installBtn.innerHTML = `<span>${email.split('@')[0]}</span>`;
-      installBtn.title = 'Sesión: ' + email + ' — click para cerrar';
-      installBtn.onclick = () => {
-        localStorage.removeItem('user-authenticated');
-        localStorage.removeItem('user-email');
-        window.toast && window.toast('Sesión cerrada', '👋');
-        updateAuthUI();
-      };
+    // BUGFIX (audit #1.4): Don't hijack #install-btn — use the dedicated #topbar-user slot.
+    // The PWA install button keeps its original behavior; auth state shows in the user chip.
+    const userChip = document.getElementById('topbar-user');
+    const userName = document.getElementById('topbar-user-name');
+    const userAvatar = document.getElementById('topbar-user-avatar');
+    if (userChip) {
+      userChip.hidden = !authed;
+      if (authed) {
+        const display = email ? email.split('@')[0] : 'invitado';
+        if (userName) userName.textContent = display;
+        if (userAvatar) userAvatar.textContent = (display[0] || 'Z').toUpperCase();
+        userChip.title = 'Sesión: ' + email + ' — click para cerrar';
+        userChip.onclick = () => {
+          localStorage.removeItem('user-authenticated');
+          localStorage.removeItem('user-email');
+          window.toast && window.toast('Sesión cerrada', '👋');
+          updateAuthUI();
+        };
+      } else {
+        userChip.onclick = () => showAuthModal();
+      }
     }
   }
 

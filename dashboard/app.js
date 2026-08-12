@@ -96,6 +96,8 @@ function buildDemoIndex() {
   return idx;
 }
 DEMO.index = buildDemoIndex();
+// Expose on window for tiendamax.js overlay (which reads window.DEMO / window.state)
+window.DEMO = DEMO;
 
 // ─── Data path resolver ───
 // En producción (GitHub Pages): los datos están en ./data/memory/ y ./data/tasks/
@@ -182,6 +184,8 @@ const state = {
   chatHistory: [],
   activityPollInterval: null,
 };
+// Expose on window for tiendamax.js overlay (which reads window.state)
+window.state = state;
 
 // ─── Toast ───
 function toast(text, icon = '', actionLabel = null, onAction = null) {
@@ -202,6 +206,11 @@ function toast(text, icon = '', actionLabel = null, onAction = null) {
 // ─── Navigation ───
 function switchView(name) {
   state.currentView = name;
+  // BUGFIX (audit #1.1): Render dynamic views BEFORE toggling is-active,
+  // otherwise the newly created #view-settings / #view-graph never receive is-active
+  // and stay display:none.
+  if (name === 'settings' && window.renderSettings) window.renderSettings();
+  if (name === 'graph' && window.renderGraphView) window.renderGraphView();
   $$('.view').forEach(v => v.classList.toggle('is-active', v.id === `view-${name}`));
   $$('.nav__item').forEach(b => b.classList.toggle('is-active', b.dataset.target === name));
   $$('.bottom-nav__item').forEach(b => b.classList.toggle('is-active', b.dataset.target === name));
@@ -229,9 +238,10 @@ function switchView(name) {
   $('#sidebar-overlay').hidden = true;
   // Scroll to top
   $('#content').scrollTop = 0;
-  // Renderizar vistas bajo demanda
-  if (name === 'settings' && window.renderSettings) window.renderSettings();
-  if (name === 'graph' && window.renderGraphView) window.renderGraphView();
+  // Notify TiendaMax overlay (if loaded)
+  if (window.tiendaMax && typeof window.tiendaMax.onViewChange === 'function') {
+    window.tiendaMax.onViewChange(name);
+  }
 }
 
 // ─── Render: hero + stats ───
@@ -861,11 +871,17 @@ function attachEvents() {
     analyzeSubmit.querySelector('span').textContent = 'Creando Issue…';
 
     try {
+      // BUGFIX (audit #1.2): state.repo was never assigned — use localStorage fallback.
+      const repo = state.repo || localStorage.getItem('agent-brain-repo') || localStorage.getItem('agent-brain-target-repos');
+      if (!repo) {
+        throw new Error('Configura tu repo en Settings (agent-brain-repo) antes de lanzar análisis.');
+      }
+      const token = state.token || localStorage.getItem('agent-brain-pat') || '';
       // Crear Issue vía GitHub API
-      const res = await fetch(`https://api.github.com/repos/${state.repo}/issues`, {
+      const res = await fetch(`https://api.github.com/repos/${repo}/issues`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${state.token || localStorage.getItem('agent-brain-pat') || ''}`,
+          'Authorization': `Bearer ${token}`,
           'Accept': 'application/vnd.github+json',
           'Content-Type': 'application/json',
         },
@@ -1105,8 +1121,9 @@ function attachEvents() {
           if (task.result && task.result.report) {
             renderInventoryReport(task.result.report);
           } else if (task.result) {
-            // Si el resultado viene del mock, buscar el archivo directamente
-            analyzeSingleRepoInventoryDirect(normalized, task.result);
+            // BUGFIX (audit #1.3): analyzeSingleRepoInventoryDirect was undefined.
+            // Use the existing analyzeSingleRepoInventory() which does the same job.
+            analyzeSingleRepoInventory(normalized);
           }
         } else if (task.status === 'error') {
           el.innerHTML = `<div class="inv-empty"><div class="inv-empty__icon">❌</div><div class="inv-empty__text">Error: ${task.error}</div></div>`;
@@ -1643,14 +1660,15 @@ function renderActivity() {
   const items = [];
 
   // Episodios (intentos de agentes)
+  // SECURITY FIX (audit #4): escape all interpolated memory fields to prevent XSS
   const episodes = Object.entries(state.data?.index || {})
     .filter(([id, m]) => m.type === 'episode')
     .map(([id, m]) => ({
       id,
       type: 'episode',
       icon: '⚙️',
-      title: `Agente <code>${m.agent || '?'}</code> — intento ${m.attempt} de ${m.task_id || '?'}`,
-      meta: `ruta: ${m.result || '?'}`,
+      title: `Agente <code>${escapeHtml(m.agent || '?')}</code> — intento ${escapeHtml(String(m.attempt || '?'))} de ${escapeHtml(String(m.task_id || '?'))}`,
+      meta: `ruta: ${escapeHtml(String(m.result || '?'))}`,
       time: m.created,
     }));
 
@@ -1661,8 +1679,8 @@ function renderActivity() {
       id,
       type: 'error',
       icon: '🐞',
-      title: `Error registrado: <code>${id}</code> — ${m.title || '(sin título)'}`,
-      meta: `confidence: ${m.confidence} · ${m.stale ? '⚠ stale' : 'ok'}`,
+      title: `Error registrado: <code>${escapeHtml(id)}</code> — ${escapeHtml(m.title || '(sin título)')}`,
+      meta: `confidence: ${escapeHtml(String(m.confidence ?? '?'))} · ${m.stale ? '⚠ stale' : 'ok'}`,
       time: m.created || m.updated,
     }));
 
@@ -1673,8 +1691,8 @@ function renderActivity() {
       id,
       type: 'lesson',
       icon: '💡',
-      title: `Lección propuesta: <code>${id}</code> — ${m.title || ''}`,
-      meta: `previno ${m.times_prevented_failure || 0} fallos`,
+      title: `Lección propuesta: <code>${escapeHtml(id)}</code> — ${escapeHtml(m.title || '')}`,
+      meta: `previno ${escapeHtml(String(m.times_prevented_failure || 0))} fallos`,
       time: m.created,
     }));
 
@@ -1685,8 +1703,8 @@ function renderActivity() {
       id,
       type: 'decision',
       icon: '📋',
-      title: `Decisión: <code>${id}</code> — ${m.title || ''}`,
-      meta: `scope: ${m.scope || '?'}`,
+      title: `Decisión: <code>${escapeHtml(id)}</code> — ${escapeHtml(m.title || '')}`,
+      meta: `scope: ${escapeHtml(String(m.scope || '?'))}`,
       time: m.created,
     }));
 
@@ -2655,6 +2673,14 @@ function initBgSidebar() {
   document.getElementById('bg-sidebar-close')?.addEventListener('click', () => sidebar.classList.remove('open'));
 
   // Actualizar lista periódicamente
+  // BUGFIX (audit #1.5): track user-closed flag so the sidebar doesn't auto-reopen
+  // every second when the user dismissed it.
+  let bgSidebarUserClosed = false;
+  document.getElementById('bg-sidebar-close')?.addEventListener('click', () => {
+    bgSidebarUserClosed = true;
+    sidebar.classList.remove('open');
+  });
+  let lastActiveCount = 0;
   setInterval(() => {
     const list = document.getElementById('bg-sidebar-list');
     if (!list || !window.bgRunner) return;
@@ -2662,13 +2688,22 @@ function initBgSidebar() {
     if (!active.length) {
       list.innerHTML = '<div class="notif-empty">Sin tareas activas</div>';
       sidebar.classList.remove('open');
+      bgSidebarUserClosed = false;
+      lastActiveCount = 0;
       return;
     }
-    if (!sidebar.classList.contains('open')) sidebar.classList.add('open');
+    // Only auto-open on the rising edge (0 → >0); respect user-closed state.
+    if (lastActiveCount === 0 && active.length > 0) {
+      bgSidebarUserClosed = false;
+    }
+    lastActiveCount = active.length;
+    if (!bgSidebarUserClosed && !sidebar.classList.contains('open')) {
+      sidebar.classList.add('open');
+    }
     list.innerHTML = active.map(t => `
       <div class="bg-task-item">
-        <div class="bg-task-item__desc">${t.description}</div>
-        <div class="bg-task-item__bar"><div class="bg-task-item__fill" style="width:${t.progress}%"></div></div>
+        <div class="bg-task-item__desc">${escapeHtml(t.description || '')}</div>
+        <div class="bg-task-item__bar"><div class="bg-task-item__fill" style="width:${t.progress || 0}%"></div></div>
       </div>
     `).join('');
   }, 1000);

@@ -130,9 +130,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Default: try network, fallback to cache
+  // Default: try network, fallback to cache, then a safe error response.
+  // BUGFIX (audit #1.7): caches.match() resolves to undefined when nothing matches,
+  // which makes respondWith(undefined) throw "The FetchEvent handler did not respond".
   event.respondWith(
-    fetch(request).catch(() => caches.match(request))
+    fetch(request).catch(() =>
+      caches.match(request).then(r => r || new Response('Offline', { status: 503, statusText: 'Offline' }))
+    )
   );
 });
 

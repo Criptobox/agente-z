@@ -12,7 +12,9 @@
     if (existing) return; // ya renderizado
 
     const settingsSection = document.createElement('section');
-    settingsSection.className = 'view';
+    // BUGFIX (audit #1.1): include is-active so the section is visible when created.
+    // switchView() now calls renderSettings() BEFORE the toggle, so we must start visible.
+    settingsSection.className = 'view is-active';
     settingsSection.id = 'view-settings';
     settingsSection.innerHTML = `
       <div class="view__header">
