@@ -114,7 +114,7 @@ jobs:
           PATH_B: ${{ steps.repos.outputs.path_b }}
           ISSUE_NUM: ${{ steps.repos.outputs.issue }}
         run: |
-          # Construir args en bash desde env vars (no interpolar ${{ }})
+          # Construir args en bash desde env vars (sin interpolar expressions de GitHub)
           ARGS=(--repoA="$REPO_A" --repoB="$REPO_B")
           [ -n "$PATH_A" ] && ARGS+=(--pathA="$PATH_A")
           [ -n "$PATH_B" ] && ARGS+=(--pathB="$PATH_B")
