@@ -353,6 +353,21 @@
     "promoted_to_rule": false,
     "updated": "2026-08-12T03:33:16.254Z"
   },
+  "BUDGET-0018": {
+    "type": "budget",
+    "project": null,
+    "title": "",
+    "tags": [],
+    "confidence": null,
+    "stale": false,
+    "files": [],
+    "symbols": [],
+    "scope": null,
+    "times_applied": null,
+    "times_prevented_failure": null,
+    "promoted_to_rule": false,
+    "updated": "2026-08-12T06:12:45.719Z"
+  },
   "tiendamax": {
     "type": "project",
     "project": null,
