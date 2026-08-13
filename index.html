@@ -1,0 +1,1012 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="description" content="Sistema multi-agente con memoria compartida — panel de control premium">
+
+  <!-- PWA -->
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#0b0d12" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#fbfbfc" media="(prefers-color-scheme: light)">
+  <meta name="color-scheme" content="dark light">
+
+  <!-- iOS PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="agent-brain">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+
+  <!-- Icons -->
+  <link rel="icon" type="image/svg+xml" href="./icon.svg">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="./icon-512.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./favicon-180.png">
+
+  <!-- OG -->
+  <meta property="og:title" content="agent-brain · panel de control">
+  <meta property="og:description" content="Sistema multi-agente con memoria compartida">
+  <meta property="og:type" content="website">
+
+  <title>agent-brain · panel de control</title>
+  <link rel="stylesheet" href="./styles.css?v=5">
+  <link rel="preload" href="./app.js?v=5" as="script">
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       APP SHELL: sidebar + main + command palette
+       ═══════════════════════════════════════════════════════════════ -->
+
+  <div class="app">
+
+    <!-- ─── SIDEBAR ─── -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar__header">
+        <div class="brand">
+          <div class="brand__mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" width="22" height="22">
+              <defs>
+                <linearGradient id="markGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#6366f1"/>
+                  <stop offset="100%" stop-color="#a855f7"/>
+                </linearGradient>
+              </defs>
+              <circle cx="16" cy="16" r="3" fill="url(#markGrad)"/>
+              <circle cx="6" cy="8" r="1.8" fill="#6366f1"/>
+              <circle cx="26" cy="8" r="1.8" fill="#a855f7"/>
+              <circle cx="6" cy="24" r="1.8" fill="#10b981"/>
+              <circle cx="26" cy="24" r="1.8" fill="#f59e0b"/>
+              <g stroke="url(#markGrad)" stroke-width="0.8" opacity="0.7" fill="none">
+                <line x1="16" y1="16" x2="6" y2="8"/>
+                <line x1="16" y1="16" x2="26" y2="8"/>
+                <line x1="16" y1="16" x2="6" y2="24"/>
+                <line x1="16" y1="16" x2="26" y2="24"/>
+              </g>
+            </svg>
+          </div>
+          <div class="brand__text">
+            <div class="brand__name">agent-brain</div>
+            <div class="brand__sub" id="brand-status">sincronizando</div>
+          </div>
+        </div>
+        <button class="icon-btn icon-btn--ghost sidebar__toggle" id="sidebar-toggle" aria-label="Contraer sidebar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+      </div>
+
+      <nav class="nav" aria-label="Secciones">
+        <button class="nav__item is-active" data-target="overview">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+          </span>
+          <span class="nav__label">Vista general</span>
+          <kbd class="nav__kbd">1</kbd>
+        </button>
+        <button class="nav__item" data-target="tasks">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </span>
+          <span class="nav__label">Tareas</span>
+          <span class="nav__badge" id="nav-badge-tasks">—</span>
+          <kbd class="nav__kbd">2</kbd>
+        </button>
+        <button class="nav__item" data-target="errors">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </span>
+          <span class="nav__label">Errores</span>
+          <span class="nav__badge nav__badge--danger" id="nav-badge-errors">—</span>
+          <kbd class="nav__kbd">3</kbd>
+        </button>
+        <button class="nav__item" data-target="lessons">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M2 12a10 10 0 0 1 20 0c0 4-3 6-4 7H6c-1-1-4-3-4-7z"/></svg>
+          </span>
+          <span class="nav__label">Lecciones</span>
+          <span class="nav__badge" id="nav-badge-lessons">—</span>
+          <kbd class="nav__kbd">4</kbd>
+        </button>
+        <button class="nav__item" data-target="diary">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </span>
+          <span class="nav__label">Diario</span>
+          <kbd class="nav__kbd">5</kbd>
+        </button>
+        <button class="nav__item" data-target="budget">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </span>
+          <span class="nav__label">Presupuesto</span>
+          <span class="nav__badge" id="nav-badge-budget">—</span>
+          <kbd class="nav__kbd">6</kbd>
+        </button>
+
+        <div class="nav__divider"></div>
+
+        <button class="nav__item" data-target="agents">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+          </span>
+          <span class="nav__label">Agentes</span>
+          <kbd class="nav__kbd">7</kbd>
+        </button>
+        <button class="nav__item" data-target="memory">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          </span>
+          <span class="nav__label">Memoria</span>
+          <kbd class="nav__kbd">8</kbd>
+        </button>
+
+        <div class="nav__divider"></div>
+
+        <button class="nav__item" data-target="chat">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </span>
+          <span class="nav__label">Chat</span>
+          <kbd class="nav__kbd">9</kbd>
+        </button>
+        <button class="nav__item" data-target="activity">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </span>
+          <span class="nav__label">Actividad</span>
+          <kbd class="nav__kbd">0</kbd>
+        </button>
+        <button class="nav__item" data-target="metrics">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          </span>
+          <span class="nav__label">Métricas</span>
+        </button>
+        <button class="nav__item" data-target="inventory">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          </span>
+          <span class="nav__label">Inventario</span>
+        </button>
+        <button class="nav__item" data-target="forecast">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          </span>
+          <span class="nav__label">Ventas IA</span>
+        </button>
+        <button class="nav__item" data-target="graph">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="12" x2="5" y2="5"/><line x1="12" y1="12" x2="19" y2="5"/><line x1="12" y1="12" x2="5" y2="19"/><line x1="12" y1="12" x2="19" y2="19"/></svg>
+          </span>
+          <span class="nav__label">Grafo</span>
+        </button>
+        <button class="nav__item" data-target="settings">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </span>
+          <span class="nav__label">Settings</span>
+        </button>
+      </nav>
+
+      <div class="sidebar__footer">
+        <div class="system-card" id="system-card">
+          <div class="system-card__row">
+            <span class="system-card__dot" id="system-dot"></span>
+            <span class="system-card__label" id="system-label">en línea</span>
+          </div>
+          <div class="system-card__row system-card__row--muted">
+            <span id="system-uptime">v0.1.0</span>
+            <span>·</span>
+            <span id="system-time">--:--</span>
+          </div>
+        </div>
+        <button class="icon-btn icon-btn--ghost" id="theme-toggle" aria-label="Cambiar tema">
+          <svg class="theme-icon theme-icon--dark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg class="theme-icon theme-icon--light" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ─── MAIN ─── -->
+    <main class="main" id="main">
+
+      <!-- Topbar -->
+      <header class="topbar">
+        <button class="icon-btn icon-btn--ghost topbar__menu" id="menu-toggle" aria-label="Menú">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+
+        <div class="topbar__title">
+          <h1 id="view-title">Vista general</h1>
+          <span class="topbar__sub" id="view-sub">Sistema multi-agente</span>
+        </div>
+
+        <div class="topbar__search" id="search-trigger">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span>Buscar en memoria, tareas…</span>
+          <kbd>⌘K</kbd>
+        </div>
+
+        <div class="topbar__actions">
+          <button class="btn btn--analyze" id="analyze-btn" title="Analizar un repo de GitHub">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+            <span class="btn__label">Analizar repo</span>
+          </button>
+          <button class="icon-btn icon-btn--ghost" id="refresh-btn" aria-label="Recargar">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          </button>
+          <button class="topbar__notif" id="notif-btn" aria-label="Notificaciones" title="Notificaciones">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="topbar__notif-badge" id="notif-badge" hidden>0</span>
+          </button>
+          <button class="btn btn--primary" id="install-btn" hidden>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Instalar</span>
+          </button>
+          <div class="topbar__user" id="topbar-user" hidden>
+            <div class="topbar__user-avatar" id="topbar-user-avatar">Z</div>
+            <div>
+              <div class="topbar__user-name" id="topbar-user-name">Invitado</div>
+              <div class="topbar__user-role">operador</div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Scrollable content -->
+      <div class="content" id="content">
+
+        <!-- ═══ VISTA GENERAL — TiendaMax premium layout ═══ -->
+        <section class="view view--overview is-active" id="view-overview">
+
+          <!-- Premium hero header -->
+          <div class="hero hero--premium">
+            <div class="hero__head">
+              <div>
+                <div class="hero__eyebrow">
+                  <span class="pulse-dot" id="hero-pulse"></span>
+                  <span id="hero-eyebrow-text">Sistema activo</span>
+                </div>
+                <h2 class="hero__title" id="hero-title">Panel de control</h2>
+                <p class="hero__subtitle" id="hero-subtitle">Leyendo memoria compartida…</p>
+              </div>
+              <div class="hero__sparkline" id="hero-sparkline">
+                <svg width="180" height="56" viewBox="0 0 180 56">
+                  <defs>
+                    <linearGradient id="sparkGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.4"/>
+                      <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+                    </linearGradient>
+                  </defs>
+                  <path id="sparkline-area" d="" fill="url(#sparkGrad)"/>
+                  <path id="sparkline-line" d="" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <div class="hero__sparkline-meta">
+                  <span class="hero__sparkline-label">Actividad 7d</span>
+                  <span class="hero__sparkline-trend" id="hero-trend">+0%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5-column KPI grid (TiendaMax style) -->
+          <div class="kpi-grid" id="kpi-grid">
+            <div class="kpi-card kpi-card--purple is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--cyan is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--green is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--amber is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--pink is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+          </div>
+
+          <!-- Quick actions grid -->
+          <div class="quick-actions" id="quick-actions">
+            <button class="quick-action quick-action--purple" data-action="analyze">
+              <span class="quick-action__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg></span>
+              <span class="quick-action__label">Analizar repo</span>
+            </button>
+            <button class="quick-action quick-action--green" data-action="tasks">
+              <span class="quick-action__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+              <span class="quick-action__label">Ver tareas</span>
+            </button>
+            <button class="quick-action quick-action--pink" data-action="memory">
+              <span class="quick-action__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
+              <span class="quick-action__label">Explorar memoria</span>
+            </button>
+            <button class="quick-action quick-action--amber" data-action="chat">
+              <span class="quick-action__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+              <span class="quick-action__label">Preguntar al agente</span>
+            </button>
+            <button class="quick-action quick-action--blue" data-action="graph">
+              <span class="quick-action__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="12" x2="5" y2="5"/><line x1="12" y1="12" x2="19" y2="5"/><line x1="12" y1="12" x2="5" y2="19"/><line x1="12" y1="12" x2="19" y2="19"/></svg></span>
+              <span class="quick-action__label">Ver grafo</span>
+            </button>
+            <button class="quick-action quick-action--cyan" data-action="inventory">
+              <span class="quick-action__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></span>
+              <span class="quick-action__label">Inventario</span>
+            </button>
+            <button class="quick-action quick-action--red" data-action="errors">
+              <span class="quick-action__icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span>
+              <span class="quick-action__label">Errores</span>
+            </button>
+          </div>
+
+          <!-- Charts row: activity line chart + memory donut -->
+          <div class="charts-row">
+            <div class="chart-card">
+              <div class="chart-card__header">
+                <div>
+                  <h3 class="chart-card__title">Actividad del sistema</h3>
+                  <div class="chart-card__sub">Memorias creadas · últimos 14 días</div>
+                </div>
+                <div class="chart-card__legend">
+                  <span class="chart-card__legend-item"><span class="chart-card__legend-dot" style="background:#8b5cf6"></span>Memorias</span>
+                  <span class="chart-card__legend-item"><span class="chart-card__legend-dot" style="background:#06b6d4"></span>Tareas</span>
+                </div>
+              </div>
+              <div class="chart-card__canvas-wrap">
+                <canvas id="chart-activity"></canvas>
+              </div>
+            </div>
+
+            <div class="chart-card donut-card">
+              <div class="chart-card__header">
+                <div>
+                  <h3 class="chart-card__title">Distribución de memoria</h3>
+                  <div class="chart-card__sub">Por tipo de recuerdo</div>
+                </div>
+              </div>
+              <div class="donut-card__body">
+                <div class="donut-card__svg-wrap" id="donut-wrap">
+                  <svg viewBox="0 0 120 120" id="donut-svg">
+                    <defs>
+                      <linearGradient id="donutGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#8b5cf6"/>
+                        <stop offset="100%" stop-color="#06b6d4"/>
+                      </linearGradient>
+                    </defs>
+                    <circle cx="60" cy="60" r="48" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="14"/>
+                    <g id="donut-segments"></g>
+                  </svg>
+                  <div class="donut-card__center">
+                    <div class="donut-card__center-value" id="donut-total">—</div>
+                    <div class="donut-card__center-label">memorias</div>
+                  </div>
+                </div>
+                <div class="donut-card__legend" id="donut-legend">
+                  <div class="skeleton skeleton--text"></div>
+                  <div class="skeleton skeleton--text"></div>
+                  <div class="skeleton skeleton--text skeleton--short"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom row: tasks table + AI center -->
+          <div class="bottom-row">
+            <div class="data-table-card">
+              <div class="data-table-card__header">
+                <h3 class="data-table-card__title">
+                  <span class="data-table-card__title-icon">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  </span>
+                  Tareas recientes
+                </h3>
+                <div class="data-table-card__actions">
+                  <button class="data-table-card__action is-active" data-tfilter="all">Todas</button>
+                  <button class="data-table-card__action" data-tfilter="in_progress">En progreso</button>
+                  <button class="data-table-card__action" data-tfilter="stuck">Stuck</button>
+                  <button class="data-table-card__action" data-tfilter="handoff">Handoff</button>
+                </div>
+              </div>
+              <div style="overflow-x:auto">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Meta</th>
+                      <th>Agente</th>
+                      <th>Progreso</th>
+                      <th>Estado</th>
+                      <th class="text-right">Intento</th>
+                    </tr>
+                  </thead>
+                  <tbody id="overview-tasks-table">
+                    <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted)">Cargando tareas…</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="ai-center" id="ai-center">
+              <div class="ai-center__header">
+                <h3 class="ai-center__title">
+                  <span class="ai-center__title-dot"></span>
+                  Centro de IA
+                </h3>
+                <span class="ai-chip"><span class="ai-chip__dot"></span>10 agentes</span>
+              </div>
+              <div class="ai-center__body">
+                <div class="ai-center__ring">
+                  <svg viewBox="0 0 120 120">
+                    <defs>
+                      <linearGradient id="aiGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#10b981"/>
+                        <stop offset="50%" stop-color="#3b82f6"/>
+                        <stop offset="100%" stop-color="#8b5cf6"/>
+                      </linearGradient>
+                    </defs>
+                    <circle class="ai-center__ring-track" cx="60" cy="60" r="50"/>
+                    <circle class="ai-center__ring-progress" id="ai-ring-progress" cx="60" cy="60" r="50" stroke-dasharray="314" stroke-dashoffset="314"/>
+                  </svg>
+                  <div class="ai-center__ring-value">
+                    <div class="ai-center__ring-num" id="ai-ring-num">0%</div>
+                    <div class="ai-center__ring-label">salud</div>
+                  </div>
+                </div>
+                <div class="ai-center__info">
+                  <h4 class="ai-center__info-title">Sistema operativo</h4>
+                  <p class="ai-center__info-desc" id="ai-info-desc">10 agentes listos. Memoria compartida sincronizada. Cuota diaria disponible.</p>
+                  <button class="ai-center__cta" id="ai-cta">
+                    <span>Optimizar mi sistema</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="ai-center__chips" id="ai-chips">
+                <span class="ai-chip ai-chip--success"><span class="ai-chip__dot"></span>orquestador activo</span>
+                <span class="ai-chip ai-chip--warning"><span class="ai-chip__dot"></span><span id="ai-chip-stuck">0</span> tareas stuck</span>
+                <span class="ai-chip"><span class="ai-chip__dot"></span><span id="ai-chip-budget">100%</span> cuota</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hidden legacy stats grid for backward compat with app.js renderStats() -->
+          <div class="hero__grid" id="stats-grid" hidden></div>
+          <div id="overview-tasks" hidden></div>
+          <div id="overview-diary" hidden></div>
+          <div id="overview-budget" hidden></div>
+          <div id="overview-memory" hidden></div>
+
+        </section>
+
+        <!-- ═══ TAREAS ═══ -->
+        <section class="view" id="view-tasks">
+          <div class="view__header">
+            <h2 class="view__title">Tareas</h2>
+            <div class="filter-chips" id="tasks-filters">
+              <button class="chip is-active" data-filter="all">Todas</button>
+              <button class="chip" data-filter="in_progress">En progreso</button>
+              <button class="chip" data-filter="needs_human">Espera humano</button>
+              <button class="chip" data-filter="stuck">Stuck</button>
+              <button class="chip" data-filter="handoff">Handoff</button>
+            </div>
+          </div>
+          <div class="card-list" id="tasks-list"></div>
+        </section>
+
+        <!-- ═══ ERRORES ═══ -->
+        <section class="view" id="view-errors">
+          <div class="view__header">
+            <h2 class="view__title">Errores abiertos</h2>
+            <div class="filter-chips">
+              <button class="chip is-active" data-filter="all">Todos</button>
+              <button class="chip" data-filter="high">Críticos</button>
+              <button class="chip" data-filter="stale">Stale</button>
+            </div>
+          </div>
+          <div class="card-list" id="errors-list"></div>
+        </section>
+
+        <!-- ═══ LECCIONES ═══ -->
+        <section class="view" id="view-lessons">
+          <div class="view__header">
+            <h2 class="view__title">Lecciones activas</h2>
+            <div class="filter-chips">
+              <button class="chip is-active" data-filter="all">Todas</button>
+              <button class="chip" data-filter="promotable">Promovibles</button>
+              <button class="chip" data-filter="general">Generales</button>
+              <button class="chip" data-filter="project">Proyecto</button>
+            </div>
+          </div>
+          <div class="card-list" id="lessons-list"></div>
+        </section>
+
+        <!-- ═══ DIARIO ═══ -->
+        <section class="view" id="view-diary">
+          <div class="view__header">
+            <h2 class="view__title">Diario</h2>
+            <span class="view__meta" id="diary-date">—</span>
+          </div>
+          <div class="card-list" id="diary-list"></div>
+        </section>
+
+        <!-- ═══ PRESUPUESTO ═══ -->
+        <section class="view" id="view-budget">
+          <div class="view__header">
+            <h2 class="view__title">Presupuesto</h2>
+            <span class="view__meta" id="budget-status">—</span>
+          </div>
+          <div class="card-list" id="budget-list"></div>
+        </section>
+
+        <!-- ═══ AGENTES ═══ -->
+        <section class="view" id="view-agents">
+          <div class="view__header">
+            <h2 class="view__title">Agentes</h2>
+            <span class="view__meta">10 activos</span>
+          </div>
+          <div class="card-list" id="agents-list"></div>
+        </section>
+
+        <!-- ═══ MEMORIA ═══ -->
+        <section class="view" id="view-memory">
+          <div class="view__header">
+            <h2 class="view__title">Memoria</h2>
+            <span class="view__meta" id="memory-count">—</span>
+          </div>
+          <div class="card-list" id="memory-list"></div>
+        </section>
+
+        <!-- ═══ CHAT ═══ -->
+        <section class="view view--chat" id="view-chat">
+          <div class="chat">
+            <div class="chat__messages" id="chat-messages">
+              <div class="chat__empty">
+                <div class="chat__empty-icon">💬</div>
+                <h3 class="chat__empty-title">Habla con tu sistema</h3>
+                <p class="chat__empty-desc">Pregunta sobre tareas, memoria, presupuesto o lo que quieras saber sobre agent-brain.</p>
+                <div class="chat__suggestions">
+                  <button class="chat__suggestion" data-q="¿Qué tareas están stuck?">¿Qué tareas están stuck?</button>
+                  <button class="chat__suggestion" data-q="¿Qué aprendimos esta semana?">¿Qué aprendimos?</button>
+                  <button class="chat__suggestion" data-q="¿Cuánta cuota me queda hoy?">¿Cuánta cuota me queda?</button>
+                  <button class="chat__suggestion" data-q="Resume el último diario">Resume el diario</button>
+                </div>
+              </div>
+            </div>
+            <form class="chat__input-wrap" id="chat-form">
+              <button class="chat__mic" type="button" id="chat-mic" aria-label="Hablar" title="Hablar (voz)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              </button>
+              <input class="chat__input" type="text" id="chat-input" placeholder="Escribe o habla…" autocomplete="off">
+              <button class="chat__speak-btn" type="button" id="chat-speak" aria-label="Leer respuesta" title="Leer respuesta en voz alta">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+              </button>
+              <button class="chat__send" type="submit" id="chat-send" aria-label="Enviar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </form>
+          </div>
+        </section>
+
+        <!-- ═══ ACTIVITY ═══ -->
+        <section class="view" id="view-activity">
+          <div class="view__header">
+            <h2 class="view__title">Actividad</h2>
+            <span class="view__meta" id="activity-status">
+              <span class="pulse-dot" style="width:6px;height:6px;display:inline-block;vertical-align:middle"></span>
+              en vivo
+            </span>
+          </div>
+          <div class="card-list" id="activity-list">
+            <div class="empty"><div class="empty__icon">📡</div><div class="empty__text">cargando actividad…</div></div>
+          </div>
+        </section>
+
+        <!-- ═══ MÉTRICAS ═══ -->
+        <section class="view" id="view-metrics">
+          <div class="view__header">
+            <h2 class="view__title">Métricas</h2>
+            <span class="view__meta">tendencias del sistema</span>
+          </div>
+
+          <div class="grid-2">
+            <div class="panel">
+              <div class="panel__header"><h3 class="panel__title">Intentos hasta gate verde</h3></div>
+              <div class="panel__body">
+                <div class="metric-big" id="metric-attempts">—</div>
+                <div class="metric-label">promedio mensual</div>
+                <div class="metric-trend" id="metric-attempts-trend">—</div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel__header"><h3 class="panel__title">Tareas completadas</h3></div>
+              <div class="panel__body">
+                <div class="metric-big" id="metric-completed">—</div>
+                <div class="metric-label">total</div>
+                <div class="metric-trend" id="metric-completed-trend">—</div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel__header"><h3 class="panel__title">Tokens consumidos (7d)</h3></div>
+              <div class="panel__body">
+                <canvas id="chart-tokens" width="400" height="180"></canvas>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel__header"><h3 class="panel__title">Memoria por tipo</h3></div>
+              <div class="panel__body">
+                <canvas id="chart-memory" width="400" height="180"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel" style="margin-top: var(--s-4)">
+            <div class="panel__header"><h3 class="panel__title">Métrica clave del spec</h3></div>
+            <div class="panel__body">
+              <p style="color: var(--text-secondary); font-size: 14px; line-height: 1.6; margin: 0">
+                <strong>Intentos promedio hasta el primer gate verde, por mes.</strong><br>
+                Si baja, el sistema está aprendiendo. Si no baja, las lecciones son decorativas.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══ INVENTARIO ═══ -->
+        <section class="view" id="view-inventory">
+          <div class="view__header">
+            <h2 class="view__title">📦 Inventario</h2>
+            <button class="btn btn--analyze" id="compare-inventory-btn" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 12 12 5 19 12"/><line x1="12" y1="5" x2="12" y2="19"/></svg>
+              <span>Analizar</span>
+            </button>
+          </div>
+
+          <!-- Hero del inventario: un solo input -->
+          <div class="inv-hero">
+            <div class="inv-hero__glow"></div>
+            <div class="inv-hero__content">
+              <div class="inv-hero__mode-toggle">
+                <button class="mode-toggle__btn is-active" data-mode="single">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <span>Analizar un repo</span>
+                </button>
+                <button class="mode-toggle__btn" data-mode="compare">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                  <span>Comparar dos repos</span>
+                </button>
+              </div>
+
+              <h3 class="inv-hero__title" id="inv-hero-title">Pega el link del repo a analizar</h3>
+              <p class="inv-hero__desc" id="inv-hero-desc">El sistema detecta automáticamente el archivo de productos, los campos (id, stock, precio) y genera un reporte completo con agotados, nuevos, stock bajo y más.</p>
+
+              <!-- Modo single: un input -->
+              <div class="inv-hero__input-wrap" id="inv-single-wrap">
+                <div class="inv-hero__input-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                </div>
+                <input class="inv-hero__input" type="text" id="inv-repo-url" placeholder="https://github.com/usuario/repo" autocomplete="off" spellcheck="false">
+                <kbd class="inv-hero__kbd">⏎</kbd>
+              </div>
+
+              <!-- Modo compare: dos inputs -->
+              <div class="inv-compare-wrap" id="inv-compare-wrap" hidden>
+                <div class="inv-compare-input">
+                  <label class="inv-compare-label">Repo A (referencia)</label>
+                  <div class="inv-hero__input-wrap inv-hero__input-wrap--sm">
+                    <div class="inv-hero__input-icon">
+                      <span style="font-weight:700;color:var(--info)">A</span>
+                    </div>
+                    <input class="inv-hero__input" type="text" id="inv-repo-a" placeholder="axontech/axon-store" autocomplete="off">
+                  </div>
+                </div>
+                <div class="inv-compare-vs">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                </div>
+                <div class="inv-compare-input">
+                  <label class="inv-compare-label">Repo B (a comparar)</label>
+                  <div class="inv-hero__input-wrap inv-hero__input-wrap--sm">
+                    <div class="inv-hero__input-icon">
+                      <span style="font-weight:700;color:var(--success)">B</span>
+                    </div>
+                    <input class="inv-hero__input" type="text" id="inv-repo-b" placeholder="tiendamax/tiendamax-web" autocomplete="off">
+                  </div>
+                </div>
+              </div>
+
+              <div class="inv-hero__chips">
+                <button class="inv-chip" data-example="facebook/react">
+                  <span class="inv-chip__icon">⚛️</span>
+                  <span>facebook/react</span>
+                </button>
+                <button class="inv-chip" data-example="twbs/bootstrap">
+                  <span class="inv-chip__icon">🅱️</span>
+                  <span>twbs/bootstrap</span>
+                </button>
+                <button class="inv-chip" data-example="tailwindlabs/tailwindcss">
+                  <span class="inv-chip__icon">🎨</span>
+                  <span>tailwindlabs/tailwindcss</span>
+                </button>
+                <button class="inv-chip" data-example="microsoft/vscode">
+                  <span class="inv-chip__icon">💻</span>
+                  <span>microsoft/vscode</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Resultado de comparación -->
+          <div id="inventory-result"></div>
+        </section>
+
+        <!-- ═══ VISTA — PREDICCIÓN DE VENTAS (IA) ═══ -->
+        <section class="view" id="view-forecast">
+          <div class="view__header">
+            <h2 class="view__title">📈 Predicción de Ventas IA</h2>
+            <span class="view__meta">Análisis predictivo conectado a tu inventario</span>
+          </div>
+
+          <!-- Connection status -->
+          <div class="panel" style="margin-bottom: var(--s-4)">
+            <div class="panel__header">
+              <h3 class="panel__title">🔌 Conexión</h3>
+            </div>
+            <div class="panel__body">
+              <div class="form-grid">
+                <div class="field">
+                  <label class="field__label">URL de tu tienda</label>
+                  <input class="field__input" type="text" id="fc-store-url" placeholder="https://tiendamax.org" value="https://tiendamax.org">
+                </div>
+                <div class="field">
+                  <label class="field__label">Plataforma</label>
+                  <select class="field__input" id="fc-store-platform">
+                    <option value="tiendamax">TiendaMax (web propia)</option>
+                    <option value="shopify">Shopify</option>
+                    <option value="mercadolibre">Mercado Libre</option>
+                    <option value="woocommerce">WooCommerce</option>
+                    <option value="manual">Ingreso manual</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label class="field__label">API Key (opcional)</label>
+                  <input class="field__input" type="password" id="fc-store-token" placeholder="Token de tu tienda (si aplica)">
+                </div>
+              </div>
+              <div style="display:flex;gap:var(--s-2);margin-top:var(--s-3);flex-wrap:wrap">
+                <button class="btn btn--primary" id="fc-connect">🔌 Conectar</button>
+                <button class="btn" id="fc-load-inventory">📦 Cargar inventario</button>
+                <button class="btn btn--analyze" id="fc-analyze" disabled>🤖 Analizar con IA</button>
+              </div>
+              <div id="fc-status" style="margin-top:var(--s-3)"></div>
+            </div>
+          </div>
+
+          <!-- KPIs predictivos -->
+          <div class="kpi-grid" id="fc-kpi-grid">
+            <div class="kpi-card kpi-card--purple is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--green is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--amber is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--cyan is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--pink is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+          </div>
+
+          <!-- Resultado del análisis IA -->
+          <div id="fc-result"></div>
+
+          <!-- Histórico de predicciones -->
+          <div class="panel" style="margin-top:var(--s-4)">
+            <div class="panel__header">
+              <h3 class="panel__title">📋 Predicciones anteriores</h3>
+            </div>
+            <div class="panel__body">
+              <div id="fc-history" style="max-height:300px;overflow-y:auto"></div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       ANALYZE REPO MODAL
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="modal" id="analyze-modal" hidden>
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__panel" role="dialog" aria-label="Analizar repo">
+      <div class="modal__header">
+        <h2 class="modal__title">🔍 Analizar repo de GitHub</h2>
+        <button class="icon-btn icon-btn--ghost" data-close aria-label="Cerrar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal__body">
+        <p class="modal__desc">Pega la URL del repo que quieres auditar. El agente <code>analyst</code> lo leerá, buscará bugs, antipatrones y mejoras, y reportará hallazgos con fixes concretos.</p>
+
+        <div class="field">
+          <label class="field__label" for="analyze-url">URL del repo</label>
+          <input class="field__input" type="text" id="analyze-url" placeholder="https://github.com/owner/repo" autocomplete="off" spellcheck="false">
+          <p class="field__hint">Formatos válidos: <code>https://github.com/owner/repo</code> o <code>owner/repo</code></p>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="analyze-focus">Foco del análisis (opcional)</label>
+          <select class="field__input" id="analyze-focus">
+            <option value="">Análisis completo (bugs + antipatrones + mejoras + seguridad)</option>
+            <option value="bugs">Solo bugs</option>
+            <option value="security">Solo seguridad</option>
+            <option value="performance">Solo rendimiento</option>
+            <option value="dx">Solo DX (developer experience)</option>
+          </select>
+        </div>
+
+        <div class="info-banner">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <span>Esto creará un Issue en tu repo con label <code>agent-task</code>. El agente tarda 2-3 min en analizar.</span>
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn--ghost" data-close>Cancelar</button>
+        <button class="btn btn--primary" id="analyze-submit" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 12 12 5 19 12"/><line x1="12" y1="5" x2="12" y2="19"/></svg>
+          <span>Lanzar análisis</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       TASK DETAIL DRAWER
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="drawer" id="task-drawer" hidden>
+    <div class="drawer__backdrop" data-close></div>
+    <aside class="drawer__panel" role="dialog" aria-label="Detalle de tarea">
+      <div class="drawer__header">
+        <h2 class="drawer__title" id="drawer-title">Detalle</h2>
+        <button class="icon-btn icon-btn--ghost" data-close aria-label="Cerrar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="drawer__body" id="drawer-body">
+        <div class="empty"><div class="empty__text">Selecciona una tarea</div></div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       COMMAND PALETTE (⌘K / Ctrl+K)
+       ═══════════════════════════════════════════════════════════════ -->
+  <div class="cmdk" id="cmdk" hidden>
+    <div class="cmdk__backdrop" data-close></div>
+    <div class="cmdk__panel" role="dialog" aria-label="Búsqueda rápida">
+      <div class="cmdk__header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input class="cmdk__input" id="cmdk-input" placeholder="Buscar tareas, errores, lecciones…" autocomplete="off">
+        <kbd>esc</kbd>
+      </div>
+      <div class="cmdk__results" id="cmdk-results"></div>
+      <div class="cmdk__footer">
+        <span><kbd>↑↓</kbd> navegar</span>
+        <span><kbd>↵</kbd> abrir</span>
+        <span><kbd>esc</kbd> cerrar</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" hidden>
+    <span class="toast__icon"></span>
+    <span class="toast__text"></span>
+    <button class="toast__action"></button>
+  </div>
+
+  <!-- Mobile overlay -->
+  <div class="sidebar-overlay" id="sidebar-overlay" hidden></div>
+
+  <!-- Bottom navigation (mobile only) -->
+  <nav class="bottom-nav" aria-label="Navegación móvil">
+    <button class="bottom-nav__item is-active" data-target="overview">
+      <span class="bottom-nav__icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+      </span>
+      <span class="bottom-nav__label">Inicio</span>
+    </button>
+    <button class="bottom-nav__item" data-target="tasks">
+      <span class="bottom-nav__icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </span>
+      <span class="bottom-nav__label">Tareas</span>
+    </button>
+    <button class="bottom-nav__item" data-target="errors">
+      <span class="bottom-nav__icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      </span>
+      <span class="bottom-nav__label">Errores</span>
+    </button>
+    <button class="bottom-nav__item" data-target="diary">
+      <span class="bottom-nav__icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </span>
+      <span class="bottom-nav__label">Diario</span>
+    </button>
+    <button class="bottom-nav__item" data-target="budget">
+      <span class="bottom-nav__icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      </span>
+      <span class="bottom-nav__label">Budget</span>
+    </button>
+  </nav>
+
+  <!-- FAB (mobile only) -->
+  <button class="fab" id="fab-analyze" aria-label="Analizar repo">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+  </button>
+
+  <script src="./voice.js?v=5"></script>
+  <script src="./supabase-client.js?v=5"></script>
+  <script src="./background-runner.js?v=5"></script>
+  <script src="./streaming.js?v=5"></script>
+  <script src="./auth.js?v=5"></script>
+  <script src="./settings.js?v=5"></script>
+  <script src="./graph.js?v=5"></script>
+  <script src="./sales-forecast.js?v=5" defer></script>
+  <script src="./app.js?v=5" defer></script>
+  <script src="./tiendamax.js?v=5" defer></script>
+
+  <!-- ─── INLINE: registrar SW + auto-reload cuando haya nueva versión + badge ─── -->
+  <script>
+    (function() {
+      // Badge de versión visible en consola para confirmar que el usuario está en v5
+      console.log('%c🚀 agent-brain v5 (sw v1.0.8)', 'background:#0b0d12;color:#7dd3fc;font-size:14px;padding:4px 8px;border-radius:4px;');
+
+      // Crear badge visual en la esquina (se puede ocultar con click)
+      var badge = document.createElement('div');
+      badge.id = 'version-badge';
+      badge.textContent = 'v5';
+      badge.style.cssText = 'position:fixed;bottom:8px;right:8px;background:#0b0d12;color:#7dd3fc;font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;border:1px solid #1e2a3a;z-index:99999;font-family:ui-monospace,monospace;cursor:pointer;opacity:0.7';
+      badge.title = 'Versión v5 (sw v1.0.8). Click para ocultar.';
+      badge.onclick = function() { badge.style.display = 'none'; };
+      document.addEventListener('DOMContentLoaded', function() {
+        document.body.appendChild(badge);
+      });
+
+      // Registrar SW con auto-reload
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('./sw.js?v=5').then(function(reg) {
+            console.log('[sw] registrado, scope:', reg.scope);
+
+            // Si hay un SW nuevo esperando, forzarlo
+            if (reg.waiting) {
+              console.log('[sw] nueva versión esperando — activando...');
+              reg.waiting.postMessage('SKIP_WAITING');
+            }
+
+            // Detectar NUEVO SW instalado
+            reg.addEventListener('updatefound', function() {
+              var newWorker = reg.installing;
+              console.log('[sw] nueva versión descargando...');
+              newWorker.addEventListener('statechange', function() {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // Hay nueva versión — forzar activación
+                  console.log('[sw] nueva versión instalada — forzando activación');
+                  newWorker.postMessage('SKIP_WAITING');
+                }
+              });
+            });
+
+            // Cuando el controller cambia (nueva versión activa), recargar
+            var refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', function() {
+              if (refreshing) return;
+              refreshing = true;
+              console.log('[sw] controller cambió — recargando página...');
+              window.location.reload();
+            });
+          }).catch(function(err) {
+            console.warn('[sw] error al registrar:', err);
+          });
+
+          // Escuchar mensajes del SW
+          navigator.serviceWorker.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'SW_UPDATED') {
+              console.log('[sw] actualizado a', event.data.version);
+            }
+          });
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
