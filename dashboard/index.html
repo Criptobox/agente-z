@@ -170,6 +170,12 @@
           </span>
           <span class="nav__label">Inventario</span>
         </button>
+        <button class="nav__item" data-target="forecast">
+          <span class="nav__icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          </span>
+          <span class="nav__label">Ventas IA</span>
+        </button>
         <button class="nav__item" data-target="graph">
           <span class="nav__icon">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="12" x2="5" y2="5"/><line x1="12" y1="12" x2="19" y2="5"/><line x1="12" y1="12" x2="5" y2="19"/><line x1="12" y1="12" x2="19" y2="19"/></svg>
@@ -724,6 +730,71 @@
           <div id="inventory-result"></div>
         </section>
 
+        <!-- ═══ VISTA — PREDICCIÓN DE VENTAS (IA) ═══ -->
+        <section class="view" id="view-forecast">
+          <div class="view__header">
+            <h2 class="view__title">📈 Predicción de Ventas IA</h2>
+            <span class="view__meta">Análisis predictivo conectado a tu inventario</span>
+          </div>
+
+          <!-- Connection status -->
+          <div class="panel" style="margin-bottom: var(--s-4)">
+            <div class="panel__header">
+              <h3 class="panel__title">🔌 Conexión</h3>
+            </div>
+            <div class="panel__body">
+              <div class="form-grid">
+                <div class="field">
+                  <label class="field__label">URL de tu tienda</label>
+                  <input class="field__input" type="text" id="fc-store-url" placeholder="https://tiendamax.org" value="https://tiendamax.org">
+                </div>
+                <div class="field">
+                  <label class="field__label">Plataforma</label>
+                  <select class="field__input" id="fc-store-platform">
+                    <option value="tiendamax">TiendaMax (web propia)</option>
+                    <option value="shopify">Shopify</option>
+                    <option value="mercadolibre">Mercado Libre</option>
+                    <option value="woocommerce">WooCommerce</option>
+                    <option value="manual">Ingreso manual</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label class="field__label">API Key (opcional)</label>
+                  <input class="field__input" type="password" id="fc-store-token" placeholder="Token de tu tienda (si aplica)">
+                </div>
+              </div>
+              <div style="display:flex;gap:var(--s-2);margin-top:var(--s-3);flex-wrap:wrap">
+                <button class="btn btn--primary" id="fc-connect">🔌 Conectar</button>
+                <button class="btn" id="fc-load-inventory">📦 Cargar inventario</button>
+                <button class="btn btn--analyze" id="fc-analyze" disabled>🤖 Analizar con IA</button>
+              </div>
+              <div id="fc-status" style="margin-top:var(--s-3)"></div>
+            </div>
+          </div>
+
+          <!-- KPIs predictivos -->
+          <div class="kpi-grid" id="fc-kpi-grid">
+            <div class="kpi-card kpi-card--purple is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--green is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--amber is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--cyan is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+            <div class="kpi-card kpi-card--pink is-skeleton"><div class="skeleton skeleton--num"></div><div class="skeleton skeleton--label"></div></div>
+          </div>
+
+          <!-- Resultado del análisis IA -->
+          <div id="fc-result"></div>
+
+          <!-- Histórico de predicciones -->
+          <div class="panel" style="margin-top:var(--s-4)">
+            <div class="panel__header">
+              <h3 class="panel__title">📋 Predicciones anteriores</h3>
+            </div>
+            <div class="panel__body">
+              <div id="fc-history" style="max-height:300px;overflow-y:auto"></div>
+            </div>
+          </div>
+        </section>
+
       </div>
     </main>
   </div>
@@ -869,6 +940,7 @@
   <script src="./auth.js"></script>
   <script src="./settings.js"></script>
   <script src="./graph.js"></script>
+  <script src="./sales-forecast.js" defer></script>
   <script src="./app.js" defer></script>
   <script src="./tiendamax.js" defer></script>
 </body>

@@ -326,7 +326,15 @@
       const key = document.getElementById('set-llm-key').value;
       const result = document.getElementById('set-llm-result');
       if (!key) { result.innerHTML = '<div class="info-banner" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.3)">⚠️ Falta API key</div>'; return; }
-      result.innerHTML = '<div class="inv-loading"><div class="inv-loading__spinner"></div><div>Probando…</div></div>';
+
+      // AUTO-GUARDAR antes de probar, así el chat no falla si el usuario se olvida de Guardar
+      localStorage.setItem('llm-provider', provider);
+      localStorage.setItem('llm-model', model);
+      localStorage.setItem('llm-api-key', key);
+      const fallback = document.getElementById('set-fallback-provider')?.value || '';
+      localStorage.setItem('llm-fallback-provider', fallback);
+
+      result.innerHTML = '<div class="inv-loading"><div class="inv-loading__spinner"></div><div>Probando ' + provider + ' (configuración guardada automáticamente)…</div></div>';
       try {
         let endpoint, headers, body;
         if (provider === 'groq' || provider === 'openrouter' || provider === 'deepseek' || provider === 'openai') {

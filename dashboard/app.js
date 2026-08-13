@@ -227,6 +227,7 @@ function switchView(name) {
     activity: ['Actividad', 'Feed en tiempo real'],
     metrics: ['Métricas', 'Tendencias del sistema'],
     inventory: ['Inventario', 'Compara productos entre repos'],
+    forecast: ['Ventas IA', 'Predicción de ventas con IA'],
     settings: ['Settings', 'Configuración del sistema'],
     graph: ['Grafo', 'Red de memorias'],
   };
@@ -1431,6 +1432,47 @@ function removeTypingIndicator() {
   if (typing) typing.remove();
 }
 
+// ─── Auto-guardar settings de IA si el usuario llenó el form pero no hizo click en "Guardar" ───
+// Esto evita el bug frecuente de "el chat no funciona" cuando en realidad el usuario
+// nunca persistió su API key.
+function autoSaveLLMSettingsIfPending() {
+  try {
+    const providerEl = document.getElementById('set-llm-provider');
+    const modelEl = document.getElementById('set-llm-model');
+    const keyEl = document.getElementById('set-llm-key');
+    const fallbackEl = document.getElementById('set-fallback-provider');
+    if (!providerEl && !keyEl) return; // Settings no renderizado todavía
+
+    const formProvider = providerEl?.value?.trim();
+    const formModel = modelEl?.value?.trim();
+    const formKey = keyEl?.value?.trim();
+    const formFallback = fallbackEl?.value?.trim() || '';
+
+    const lsProvider = localStorage.getItem('llm-provider');
+    const lsModel = localStorage.getItem('llm-model');
+    const lsKey = localStorage.getItem('llm-api-key');
+
+    // Si el form tiene datos y difieren de localStorage, persistir
+    if (formProvider && formProvider !== lsProvider) {
+      localStorage.setItem('llm-provider', formProvider);
+      console.log('[chat] auto-guardado provider:', formProvider);
+    }
+    if (formModel && formModel !== lsModel) {
+      localStorage.setItem('llm-model', formModel);
+      console.log('[chat] auto-guardado model:', formModel);
+    }
+    if (formKey && formKey !== lsKey) {
+      localStorage.setItem('llm-api-key', formKey);
+      console.log('[chat] auto-guardado api key (len=' + formKey.length + ')');
+    }
+    if (formFallback !== (localStorage.getItem('llm-fallback-provider') || '')) {
+      localStorage.setItem('llm-fallback-provider', formFallback);
+    }
+  } catch (err) {
+    console.warn('[chat] autoSaveLLMSettingsIfPending falló:', err);
+  }
+}
+
 async function sendChatMessage(question) {
   if (!question.trim()) return;
   addChatMessage('user', question);
@@ -1500,6 +1542,9 @@ async function sendChatMessage(question) {
   // Si hay API key configurada, llamamos directo a window.streaming.stream()
   // para que el texto aparezca palabra por palabra EN TIEMPO REAL.
   // Si no hay API key, caemos al bgRunner (mock o backend).
+  // AUTO-GUARDAR: si el usuario llenó los campos de Settings pero no hizo click en
+  // "Guardar", los persistimos acá para que el chat funcione.
+  autoSaveLLMSettingsIfPending();
   const apiKey = localStorage.getItem('llm-api-key') || '';
   const provider = localStorage.getItem('llm-provider') || 'groq';
 
