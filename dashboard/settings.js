@@ -353,8 +353,9 @@
           }
           body = JSON.stringify({ model, messages: [{ role: 'user', content: 'Responde solo "OK"'}], max_tokens: 5 });
         } else if (provider === 'gemini') {
-          endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-          headers = { 'Content-Type': 'application/json' };
+          // Key en header (no en la URL) — las query strings quedan en logs.
+          endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+          headers = { 'Content-Type': 'application/json', 'x-goog-api-key': key };
           body = JSON.stringify({ contents: [{ parts: [{ text: 'Responde solo OK' }] }] });
         } else if (provider === 'anthropic') {
           endpoint = 'https://api.anthropic.com/v1/messages';
