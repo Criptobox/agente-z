@@ -1568,6 +1568,36 @@
     "promoted_to_rule": false,
     "updated": "2026-08-16T18:34:31.576Z"
   },
+  "BUDGET-0099": {
+    "type": "budget",
+    "project": null,
+    "title": "",
+    "tags": [],
+    "confidence": null,
+    "stale": false,
+    "files": [],
+    "symbols": [],
+    "scope": null,
+    "times_applied": null,
+    "times_prevented_failure": null,
+    "promoted_to_rule": false,
+    "updated": "2026-08-16T19:23:34.346Z"
+  },
+  "BUDGET-0100": {
+    "type": "budget",
+    "project": null,
+    "title": "",
+    "tags": [],
+    "confidence": null,
+    "stale": false,
+    "files": [],
+    "symbols": [],
+    "scope": null,
+    "times_applied": null,
+    "times_prevented_failure": null,
+    "promoted_to_rule": false,
+    "updated": "2026-08-16T20:26:52.150Z"
+  },
   "tiendamax": {
     "type": "project",
     "project": null,
