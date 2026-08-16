@@ -31,8 +31,9 @@ function parseArgs() {
   const args = {};
   for (const a of process.argv.slice(2)) {
     if (a.startsWith('--')) {
-      const [k, v] = a.slice(2).split('=');
-      args[k] = v ?? true;
+      const eq = a.indexOf('=');
+      if (eq === -1) args[a.slice(2)] = true;
+      else args[a.slice(2, eq)] = a.slice(eq + 1);
     }
   }
   return {

@@ -29,8 +29,8 @@
   <meta property="og:type" content="website">
 
   <title>agent-brain · panel de control</title>
-  <link rel="stylesheet" href="./styles.css">
-  <link rel="preload" href="./app.js" as="script">
+  <link rel="stylesheet" href="./styles.css?v=5">
+  <link rel="preload" href="./app.js?v=5" as="script">
 </head>
 <body>
 
@@ -933,15 +933,80 @@
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
   </button>
 
-  <script src="./voice.js"></script>
-  <script src="./supabase-client.js"></script>
-  <script src="./background-runner.js"></script>
-  <script src="./streaming.js"></script>
-  <script src="./auth.js"></script>
-  <script src="./settings.js"></script>
-  <script src="./graph.js"></script>
-  <script src="./sales-forecast.js" defer></script>
-  <script src="./app.js" defer></script>
-  <script src="./tiendamax.js" defer></script>
+  <script src="./voice.js?v=5"></script>
+  <script src="./supabase-client.js?v=5"></script>
+  <script src="./background-runner.js?v=5"></script>
+  <script src="./streaming.js?v=5"></script>
+  <script src="./auth.js?v=5"></script>
+  <script src="./settings.js?v=5"></script>
+  <script src="./graph.js?v=5"></script>
+  <script src="./sales-forecast.js?v=5" defer></script>
+  <script src="./app.js?v=5" defer></script>
+  <script src="./tiendamax.js?v=5" defer></script>
+
+  <!-- ─── INLINE: registrar SW + auto-reload cuando haya nueva versión + badge ─── -->
+  <script>
+    (function() {
+      // Badge de versión visible en consola para confirmar que el usuario está en v5
+      console.log('%c🚀 agent-brain v5 (sw v1.0.8)', 'background:#0b0d12;color:#7dd3fc;font-size:14px;padding:4px 8px;border-radius:4px;');
+
+      // Crear badge visual en la esquina (se puede ocultar con click)
+      var badge = document.createElement('div');
+      badge.id = 'version-badge';
+      badge.textContent = 'v5';
+      badge.style.cssText = 'position:fixed;bottom:8px;right:8px;background:#0b0d12;color:#7dd3fc;font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;border:1px solid #1e2a3a;z-index:99999;font-family:ui-monospace,monospace;cursor:pointer;opacity:0.7';
+      badge.title = 'Versión v5 (sw v1.0.8). Click para ocultar.';
+      badge.onclick = function() { badge.style.display = 'none'; };
+      document.addEventListener('DOMContentLoaded', function() {
+        document.body.appendChild(badge);
+      });
+
+      // Registrar SW con auto-reload
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('./sw.js?v=5').then(function(reg) {
+            console.log('[sw] registrado, scope:', reg.scope);
+
+            // Si hay un SW nuevo esperando, forzarlo
+            if (reg.waiting) {
+              console.log('[sw] nueva versión esperando — activando...');
+              reg.waiting.postMessage('SKIP_WAITING');
+            }
+
+            // Detectar NUEVO SW instalado
+            reg.addEventListener('updatefound', function() {
+              var newWorker = reg.installing;
+              console.log('[sw] nueva versión descargando...');
+              newWorker.addEventListener('statechange', function() {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // Hay nueva versión — forzar activación
+                  console.log('[sw] nueva versión instalada — forzando activación');
+                  newWorker.postMessage('SKIP_WAITING');
+                }
+              });
+            });
+
+            // Cuando el controller cambia (nueva versión activa), recargar
+            var refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', function() {
+              if (refreshing) return;
+              refreshing = true;
+              console.log('[sw] controller cambió — recargando página...');
+              window.location.reload();
+            });
+          }).catch(function(err) {
+            console.warn('[sw] error al registrar:', err);
+          });
+
+          // Escuchar mensajes del SW
+          navigator.serviceWorker.addEventListener('message', function(event) {
+            if (event.data && event.data.type === 'SW_UPDATED') {
+              console.log('[sw] actualizado a', event.data.version);
+            }
+          });
+        });
+      }
+    })();
+  </script>
 </body>
 </html>

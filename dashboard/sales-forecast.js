@@ -77,9 +77,15 @@
   function loadInventory() {
     const status = $('#fc-status');
     // Intentar usar el inventario ya cargado en el dashboard (state.lastInventoryReport)
-    if (window.state?.lastInventoryReport?.products?.length) {
-      const report = window.state.lastInventoryReport;
-      const products = report.products;
+    // El reporte real del dashboard trae {agotados, stockBajo, disponibles, summary, ...}
+    // (no un array .products — ese solo existe en los datos demo).
+    const report = window.state?.lastInventoryReport;
+    const products = report?.products?.length
+      ? report.products
+      : report
+        ? [...(report.disponibles || []), ...(report.stockBajo || []), ...(report.agotados || [])]
+        : [];
+    if (products.length) {
       status.innerHTML = '<div class="info-banner" style="background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.3)">✅ <strong>' + products.length + ' productos</strong> cargados desde el inventario del dashboard.<br><small>Si querés inventario fresco desde tu tienda, andá a Inventario → Cargar desde URL.</small></div>';
       renderInventoryKPIs(report);
       $('#fc-analyze').disabled = false;

@@ -17,7 +17,7 @@
     "self-improve": "node src/agents/self_improver.js",
     "learner": "node src/agents/learner.js",
     "dashboard:serve": "node tests/fixtures/serve-dashboard.js",
-    "test": "node --test tests/",
+    "test": "node --test tests/*.test.js",
     "smoke": "node tests/smoke.js",
     "smoke:dry": "node tests/smoke.js --dry-run"
   },

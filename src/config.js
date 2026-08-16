@@ -58,6 +58,17 @@ export const config = {
   timezone: process.env.TIMEZONE || 'America/Havana',
   dryRun: process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true',
 
+  // ── Tools web (web_search, web_fetch) ──
+  // Opt-out: habilitadas por defecto. El acceso real lo limita el sistema de
+  // permisos por agente (runTool exige el permiso 'web' en el .md del agente).
+  webEnabled: process.env.WEB_ENABLED !== 'false',
+  webFetchMaxBytes: parseInt(process.env.WEB_FETCH_MAX_BYTES || '50000', 10),
+
+  // ── Inferencia local (Ollama / llama.cpp) ──
+  ollamaEndpoint: process.env.OLLAMA_ENDPOINT || 'http://localhost:11434/v1',
+  ollamaModel: process.env.OLLAMA_MODEL || 'qwen2.5:7b',
+  ollamaKey: process.env.OLLAMA_KEY || '',
+
   // ── Paths base (siempre relativos al repo root) ──
   root: process.cwd(),
   paths: {

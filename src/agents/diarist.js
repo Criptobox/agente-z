@@ -17,6 +17,7 @@ import { resolve, join } from 'node:path';
 import { config, restApiHeaders } from '../config.js';
 import { complete } from '../models.js';
 import { listMemories } from '../memory.js';
+import { parseAgentJSON } from '../utils/json.js';
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
@@ -168,9 +169,7 @@ async function main() {
     { jsonMode: true, temperature: 0.4 }
   );
 
-  const first = raw.indexOf('{');
-  const last = raw.lastIndexOf('}');
-  const diary = JSON.parse(raw.slice(first, last + 1));
+  const diary = parseAgentJSON(raw);
   console.log(`[diarist] headline="${diary.headline}" highlight=${diary.highlight}`);
 
   const issueInfo = await ensureDailyIssue();

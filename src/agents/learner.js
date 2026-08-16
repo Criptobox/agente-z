@@ -19,13 +19,15 @@ import { resolve } from 'node:path';
 import { config, restApiHeaders } from '../config.js';
 import { complete } from '../models.js';
 import { listMemories, writeMemory, nextId } from '../memory.js';
+import { parseAgentJSON } from '../utils/json.js';
 
 function parseArgs() {
   const args = {};
   for (const a of process.argv.slice(2)) {
     if (a.startsWith('--')) {
-      const [k, v] = a.slice(2).split('=');
-      args[k] = v ?? true;
+      const eq = a.indexOf('=');
+      if (eq === -1) args[a.slice(2)] = true;
+      else args[a.slice(2, eq)] = a.slice(eq + 1);
     }
   }
   return {
@@ -175,9 +177,7 @@ async function main() {
     { jsonMode: true, temperature: 0.3 }
   );
 
-  const first = raw.indexOf('{');
-  const last = raw.lastIndexOf('}');
-  const result = JSON.parse(raw.slice(first, last + 1));
+  const result = parseAgentJSON(raw);
   console.log(`[learner] decision=${result.lesson_decision}`);
 
   await postPostMortemComment(task, result);

@@ -12,6 +12,17 @@
   let offsetX = 0, offsetY = 0;
   let scale = 1;
 
+  // Los id/title vienen de memory/index.json (contenido generado por agentes
+  // que leen repos de terceros) — escapar antes de inyectarlos en innerHTML.
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function renderGraphView() {
     let view = document.getElementById('view-graph');
     if (!view) {
@@ -85,7 +96,7 @@
           tooltip.hidden = false;
           tooltip.style.left = (e.clientX - rect.left + 10) + 'px';
           tooltip.style.top = (e.clientY - rect.top + 10) + 'px';
-          tooltip.innerHTML = `<strong>${hoveredNode.id}</strong><br>${hoveredNode.title}<br><span style="color:var(--text-muted)">${hoveredNode.type} · conf=${hoveredNode.confidence || '?'}</span>`;
+          tooltip.innerHTML = `<strong>${escapeHtml(hoveredNode.id)}</strong><br>${escapeHtml(hoveredNode.title || '')}<br><span style="color:var(--text-muted)">${escapeHtml(hoveredNode.type || '')} · conf=${hoveredNode.confidence || '?'}</span>`;
         } else {
           tooltip.hidden = true;
         }

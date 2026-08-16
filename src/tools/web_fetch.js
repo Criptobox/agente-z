@@ -104,12 +104,12 @@ export const web_fetch = {
   },
   permissions: ['web'],
   async run({ url, maxBytes, raw = false }, ctx) {
-    if (!config.webEnabled) {
-      throw new Error('web_fetch está deshabilitado (WEB_ENABLED=false). Habilítalo en .env o Variables.');
-    }
     if (!url) throw new Error('url requerido');
     if (!/^https?:\/\//i.test(url)) {
       throw new Error('URL debe empezar con http:// o https://');
+    }
+    if (!config.webEnabled) {
+      throw new Error('web_fetch está deshabilitado (WEB_ENABLED=false). Habilítalo en .env o Variables.');
     }
 
     // Respetar config.webFetchMaxBytes si no se pasó maxBytes explícito

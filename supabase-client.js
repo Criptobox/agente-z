@@ -3,15 +3,20 @@
 // Carga dinámicamente @supabase/supabase-js desde CDN (sin npm install).
 // Maneja auth, CRUD, realtime y búsqueda semántica.
 
-const SUPABASE_URL = localStorage.getItem('agent-brain-supabase-url') || '';
-const SUPABASE_ANON_KEY = localStorage.getItem('agent-brain-supabase-anon-key') || '';
+// Leer de localStorage EN CADA uso (no cachear en const al cargar el script):
+// si no, tras configurar credenciales en Settings todo seguiría respondiendo
+// "Supabase no configurado" hasta recargar la página.
+const CREDS_URL_KEY = 'agent-brain-supabase-url';
+const CREDS_KEY_KEY = 'agent-brain-supabase-anon-key';
 
 let supabase = null;
 
 // Cargar supabase-js desde CDN
 async function loadSupabase() {
   if (supabase) return supabase;
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  const supabaseUrl = localStorage.getItem(CREDS_URL_KEY) || '';
+  const supabaseAnonKey = localStorage.getItem(CREDS_KEY_KEY) || '';
+  if (!supabaseUrl || !supabaseAnonKey) return null;
   try {
     if (!window.supabase) {
       await new Promise((resolve, reject) => {
@@ -22,7 +27,7 @@ async function loadSupabase() {
         document.head.appendChild(script);
       });
     }
-    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey, {
       auth: { persistSession: true, autoRefreshToken: true },
       realtime: { params: { eventsPerSecond: 2 } },
     });

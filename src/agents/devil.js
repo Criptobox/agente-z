@@ -17,17 +17,23 @@
 // No puede aprobar — esa es regla del spec (sección 12.1).
 
 import { readFileSync, existsSync, readdirSync, writeFileSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { resolve } from 'node:path';
 import { config, restApiHeaders } from '../config.js';
 import { complete } from '../models.js';
-import { loadIndex, readMemory, listMemories, writeMemory } from '../memory.js';
+import { readMemory, listMemories, writeMemory } from '../memory.js';
+import { parseAgentJSON } from '../utils/json.js';
 
 function parseArgs() {
   const args = {};
   for (const a of process.argv.slice(2)) {
     if (a.startsWith('--')) {
-      const [k, v] = a.slice(2).split('=');
-      args[k] = v ?? true;
+      const eq = a.indexOf('=');
+      // indexOf (no split) para no truncar valores que contengan '='
+      if (eq === -1) {
+        args[a.slice(2)] = true;
+      } else {
+        args[a.slice(2, eq)] = a.slice(eq + 1);
+      }
     }
   }
   return {
@@ -63,7 +69,14 @@ function buildDevilPrompt(task, lastEpisode, allEpisodes) {
 
   const episodesText = allEpisodes.map((e) => `- Intento ${e.attempt}: ruta=${e.result}, agente=${e.agent}, gates_fallidos=${(e.gates_failed || []).join(',')}, gates_verdes=${(e.gates_passed || []).join(',')}`).join('\n');
 
-  const memoryUsed = lastEpisode?.body ? JSON.parse(lastEpisode.body).reused_memory || [] : [];
+  let memoryUsed = [];
+  if (lastEpisode?.body) {
+    try {
+      memoryUsed = JSON.parse(lastEpisode.body).reused_memory || [];
+    } catch {
+      // body del episodio no es JSON (formato handoff) — sin memoria reutilizada conocida
+    }
+  }
 
   return `Eres EL ABOGADO DEL DIABLO. No trabajas en la tarea. Tu único trabajo es dudar del consenso de los demás agentes.
 
@@ -184,27 +197,6 @@ function applyStaleMarks(devil) {
   }
 }
 
-// ── Si BLOCK, actualiza la tarea para no avanzar ──
-function applyBlock(task, devil) {
-  if (devil.verdict !== 'BLOCK') return;
-  const updated = {
-    ...task,
-    status: 'blocked_by_devil',
-    devil_block: {
-      at: new Date().toISOString(),
-      reason: devil.block_reason,
-      missing_gates: devil.missing_gates || [],
-      concerns: devil.concerns || [],
-    },
-  };
-  const path = resolve(config.root, config.paths.tasks, `${task.id}.json`);
-  writeFileSync(path, JSON.stringify(updated, null, 2) + '\n', 'utf8');
-}
-
-function require_node_fs_REMOVED() {
-  // eliminado: usamos writeFileSync importado arriba.
-}
-
 // ── Main ──
 async function main() {
   const args = parseArgs();
@@ -227,22 +219,40 @@ async function main() {
     { jsonMode: true, temperature: 0.4 }
   );
 
-  // Parse JSON
-  const first = raw.indexOf('{');
-  const last = raw.lastIndexOf('}');
-  const devil = JSON.parse(raw.slice(first, last + 1));
+  // Parse JSON robusto (fences, escapes, trailing commas)
+  const devil = parseAgentJSON(raw);
   console.log(`[devil] veredicto=${devil.verdict} concerns=${devil.concerns?.length || 0}`);
 
   await postDevilComment(task, devil);
   applyStaleMarks(devil);
-  applyBlock(task, devil);
 
-  // Si BLOCK y hay missing_gates, los añadimos a la task
-  if (devil.verdict === 'BLOCK' && devil.missing_gates?.length) {
-    task.definition_of_done = [...(task.definition_of_done || []), ...devil.missing_gates.map((g, i) => ({ ...g, id: g.id_suggested || `G${(task.definition_of_done?.length || 0) + i + 1}` }))];
+  // Si BLOCK: añadir missing_gates y bloquear en UNA sola escritura.
+  // (Antes había dos escrituras: applyBlock escribía status=blocked_by_devil
+  //  y el bloque de missing_gates lo pisaba con el objeto original sin el bloqueo.)
+  if (devil.verdict === 'BLOCK') {
+    const updated = {
+      ...task,
+      status: 'blocked_by_devil',
+      devil_block: {
+        at: new Date().toISOString(),
+        reason: devil.block_reason,
+        missing_gates: devil.missing_gates || [],
+        concerns: devil.concerns || [],
+      },
+    };
+    if (devil.missing_gates?.length) {
+      updated.definition_of_done = [
+        ...(task.definition_of_done || []),
+        ...devil.missing_gates.map((g, i) => ({
+          ...g,
+          id: g.id_suggested || `G${(task.definition_of_done?.length || 0) + i + 1}`,
+        })),
+      ];
+      console.log(`[devil] ${devil.missing_gates.length} gates añadidos a la tarea`);
+    }
     const path = resolve(config.root, config.paths.tasks, `${task.id}.json`);
-    writeFileSync(path, JSON.stringify(task, null, 2) + '\n', 'utf8');
-    console.log(`[devil] ${devil.missing_gates.length} gates añadidos a la tarea`);
+    writeFileSync(path, JSON.stringify(updated, null, 2) + '\n', 'utf8');
+    console.log(`[devil] tarea bloqueada: ${devil.block_reason || '(sin razón)'}`);
   }
 
   console.log('[devil] fin');

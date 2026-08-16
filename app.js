@@ -1198,6 +1198,7 @@ function attachEvents() {
     if (navigator.onLine) {
       el.textContent = 'en línea';
       $('#system-dot').className = 'system-card__dot';
+      $('#system-dot').style.background = ''; // limpiar el amarillo del modo offline
     } else {
       el.textContent = 'sin conexión';
       $('#system-dot').className = 'system-card__dot';
@@ -1577,10 +1578,11 @@ async function sendChatMessage(question) {
 - Si la pregunta requiere crear una tarea, sugiérelo pero NO la crees.
 - Cita IDs concretos (TASK-XXXX, BUG-XXXX, LESSON-XXXX) cuando sea relevante.`;
 
+    // La pregunta ya está en state.chatHistory (se pushea en sendChatMessage) —
+    // NO añadirla otra vez: antes se enviaba duplicada al modelo.
     const llmMessages = [
       { role: 'system', content: systemPrompt },
       ...state.chatHistory.slice(-6).map(h => ({ role: h.role || 'user', content: h.content })),
-      { role: 'user', content: question },
     ];
 
     const model = localStorage.getItem('llm-model') || (window.__defaultModelFor ? window.__defaultModelFor(provider) : 'llama-3.1-70b-versatile');
@@ -1732,8 +1734,12 @@ function renderMarkdownLive(text) {
   // Listas
   html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
   html = html.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // Links — solo protocolos seguros (bloquea javascript:, data:, vbscript:)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m, label, url) => {
+    const cleanUrl = url.trim().replace(/"/g, '%22');
+    const safe = /^(https?:\/\/|\/|#|mailto:)/i.test(cleanUrl) ? cleanUrl : '#';
+    return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+  });
   // Saltos de línea
   html = html.replace(/\n/g, '<br>');
   return html;

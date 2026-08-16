@@ -364,37 +364,43 @@ $('#verify-repo').addEventListener('click', async () => {
   btn.disabled = true;
   btn.querySelector('span').textContent = 'Verificando…';
 
-  const res = await apiCall('GET', `/repos/${repo}`);
-  if (!res.ok) {
-    if (res.status === 404) showError(`Repo "${repo}" no encontrado. ¿Lo creaste ya? ¿Está bien escrito?`);
-    else showError(`Error ${res.status} al verificar repo.`);
-    btn.disabled = false;
-    btn.querySelector('span').textContent = 'Verificar repo';
-    return;
-  }
-  state.repoInfo = res.data;
-  const issues = [];
-  if (!res.data.public && !res.data.visibility === 'public') issues.push('⚠️ El repo NO es público — Actions será limitado. Considera hacerlo público.');
-  if (res.data.permissions?.admin !== true) issues.push('⚠️ No tienes permisos de admin en este repo. No podrás configurar variables ni Pages.');
+  try {
+    const res = await apiCall('GET', `/repos/${repo}`);
+    if (!res.ok) {
+      if (res.status === 404) showError(`Repo "${repo}" no encontrado. ¿Lo creaste ya? ¿Está bien escrito?`);
+      else showError(`Error ${res.status} al verificar repo.`);
+      btn.disabled = false;
+      btn.querySelector('span').textContent = 'Verificar repo';
+      return;
+    }
+    state.repoInfo = res.data;
+    const issues = [];
+    if (res.data.visibility ? res.data.visibility !== 'public' : !res.data.public) issues.push('⚠️ El repo NO es público — Actions será limitado. Considera hacerlo público.');
+    if (res.data.permissions?.admin !== true) issues.push('⚠️ No tienes permisos de admin en este repo. No podrás configurar variables ni Pages.');
 
-  showResult('repo-result', `
-    <div class="result__ok">
-      <strong>✓ ${res.data.full_name}</strong>
-      <div class="result__meta">
-        ${res.data.visibility === 'public' ? '🟢 público' : '🔴 privado'} ·
-        ${res.data.permissions?.admin ? '✓ admin' : '✗ sin admin'} ·
-        default branch: <code>${res.data.default_branch}</code>
+    showResult('repo-result', `
+      <div class="result__ok">
+        <strong>✓ ${res.data.full_name}</strong>
+        <div class="result__meta">
+          ${res.data.visibility === 'public' ? '🟢 público' : '🔴 privado'} ·
+          ${res.data.permissions?.admin ? '✓ admin' : '✗ sin admin'} ·
+          default branch: <code>${res.data.default_branch}</code>
+        </div>
+        ${issues.length ? `<div class="result__warn">${issues.join('<br>')}</div>` : ''}
       </div>
-      ${issues.length ? `<div class="result__warn">${issues.join('<br>')}</div>` : ''}
-    </div>
-  `);
+    `);
 
-  if (res.data.permissions?.admin !== true) {
+    if (res.data.permissions?.admin !== true) {
+      btn.disabled = false;
+      btn.querySelector('span').textContent = 'Verificar repo';
+      return;
+    }
+    setTimeout(() => setStep(3), 1000);
+  } catch (err) {
+    showError(`Error de red al verificar el repo: ${err.message}`);
     btn.disabled = false;
     btn.querySelector('span').textContent = 'Verificar repo';
-    return;
   }
-  setTimeout(() => setStep(3), 1000);
 });
 
 // ─── Step 3: Variables ───
@@ -403,51 +409,57 @@ $('#create-vars').addEventListener('click', async () => {
   btn.disabled = true;
   btn.querySelector('span').textContent = 'Creando…';
 
-  const vars = {};
-  $$('[data-var]').forEach(input => {
-    vars[input.dataset.var] = input.value.trim();
-  });
+  try {
+    const vars = {};
+    $$('[data-var]').forEach(input => {
+      vars[input.dataset.var] = input.value.trim();
+    });
 
-  const results = [];
-  let okCount = 0;
-  for (const [name, value] of Object.entries(vars)) {
-    // 1. Intentar crear con POST
-    let res = await apiCall('POST', `/repos/${state.repo}/actions/variables`, { name, value });
-    if (res.ok) {
-      results.push(`✓ ${name}`); okCount++;
-      continue;
-    }
-    // 2. Si falla por cualquier motivo (ya existe, 422, 409, etc.), intentar PATCH para actualizar
-    const msg = (res.data?.message || '').toLowerCase();
-    if (res.status === 422 || res.status === 409 || msg.includes('already exists') || msg.includes('exist')) {
-      const upd = await apiCall('PATCH', `/repos/${state.repo}/actions/variables/${name}`, { name, value });
-      if (upd.ok) {
-        results.push(`✓ ${name} (actualizada)`); okCount++;
-      } else {
-        // 3. Último recurso: borrar y recrear
-        const del = await apiCall('DELETE', `/repos/${state.repo}/actions/variables/${name}`);
-        const recreate = await apiCall('POST', `/repos/${state.repo}/actions/variables`, { name, value });
-        if (recreate.ok) {
-          results.push(`✓ ${name} (recreada)`); okCount++;
-        } else {
-          results.push(`✗ ${name} — no se pudo crear ni actualizar (${recreate.status})`);
-        }
+    const results = [];
+    let okCount = 0;
+    for (const [name, value] of Object.entries(vars)) {
+      // 1. Intentar crear con POST
+      let res = await apiCall('POST', `/repos/${state.repo}/actions/variables`, { name, value });
+      if (res.ok) {
+        results.push(`✓ ${name}`); okCount++;
+        continue;
       }
-    } else {
-      results.push(`✗ ${name} — ${res.data?.message || res.status}`);
+      // 2. Si falla por cualquier motivo (ya existe, 422, 409, etc.), intentar PATCH para actualizar
+      const msg = (res.data?.message || '').toLowerCase();
+      if (res.status === 422 || res.status === 409 || msg.includes('already exists') || msg.includes('exist')) {
+        const upd = await apiCall('PATCH', `/repos/${state.repo}/actions/variables/${name}`, { name, value });
+        if (upd.ok) {
+          results.push(`✓ ${name} (actualizada)`); okCount++;
+        } else {
+          // 3. Último recurso: borrar y recrear
+          const del = await apiCall('DELETE', `/repos/${state.repo}/actions/variables/${name}`);
+          const recreate = await apiCall('POST', `/repos/${state.repo}/actions/variables`, { name, value });
+          if (recreate.ok) {
+            results.push(`✓ ${name} (recreada)`); okCount++;
+          } else {
+            results.push(`✗ ${name} — no se pudo crear ni actualizar (${recreate.status})`);
+          }
+        }
+      } else {
+        results.push(`✗ ${name} — ${res.data?.message || res.status}`);
+      }
     }
-  }
 
-  showResult('vars-result', `
-    <div class="result__ok">
-      <strong>✓ ${okCount}/${Object.keys(vars).length} variables configuradas</strong>
-      <ul class="result__list">${results.map(r => `<li>${r}</li>`).join('')}</ul>
-    </div>
-  `);
+    showResult('vars-result', `
+      <div class="result__ok">
+        <strong>✓ ${okCount}/${Object.keys(vars).length} variables configuradas</strong>
+        <ul class="result__list">${results.map(r => `<li>${r}</li>`).join('')}</ul>
+      </div>
+    `);
 
-  if (okCount === Object.keys(vars).length) {
-    setTimeout(() => setStep(4), 1200);
-  } else {
+    if (okCount === Object.keys(vars).length) {
+      setTimeout(() => setStep(4), 1200);
+    } else {
+      btn.disabled = false;
+      btn.querySelector('span').textContent = 'Reintentar';
+    }
+  } catch (err) {
+    showError(`Error de red al crear variables: ${err.message}`);
     btn.disabled = false;
     btn.querySelector('span').textContent = 'Reintentar';
   }
@@ -554,45 +566,51 @@ $('#deploy-now').addEventListener('click', async () => {
   btn.disabled = true;
   btn.querySelector('span').textContent = 'Lanzando…';
 
-  // Disparar workflow reindex
-  const res = await apiCall('POST', `/repos/${state.repo}/actions/workflows/reindex.yml/dispatches`, {
-    ref: state.repoInfo?.default_branch || 'main'
-  });
+  try {
+    // Disparar workflow reindex
+    const res = await apiCall('POST', `/repos/${state.repo}/actions/workflows/reindex.yml/dispatches`, {
+      ref: state.repoInfo?.default_branch || 'main'
+    });
 
-  if (!res.ok) {
-    if (res.status === 404) {
-      showError('Workflow reindex.yml no encontrado. ¿Sí subiste la carpeta .github/workflows/?');
-    } else if (res.status === 422) {
-      showError('El workflow está deshabilitado. Ve a Actions en GitHub y habilítalo manualmente, luego vuelve.');
-    } else {
-      showError(`Error lanzando workflow: ${res.status}`);
+    if (!res.ok) {
+      if (res.status === 404) {
+        showError('Workflow reindex.yml no encontrado. ¿Sí subiste la carpeta .github/workflows/?');
+      } else if (res.status === 422) {
+        showError('El workflow está deshabilitado. Ve a Actions en GitHub y habilítalo manualmente, luego vuelve.');
+      } else {
+        showError(`Error lanzando workflow: ${res.status}`);
+      }
+      btn.disabled = false;
+      btn.querySelector('span').textContent = 'Desplegar ahora';
+      return;
     }
+
+    showResult('deploy-result', `
+      <div class="result__ok">
+        <strong>✓ Workflow <code>reindex</code> lanzado</strong>
+        <div class="result__meta">Tarda 2-3 minutos. Puedes verlo en:</div>
+        <a class="result__link" href="https://github.com/${state.repo}/actions" target="_blank">https://github.com/${state.repo}/actions</a>
+      </div>
+    `);
+
+    // Mostrar card final
+    const owner = state.repo.split('/')[0];
+    const name = state.repo.split('/')[1];
+    const pagesUrl = `https://${owner}.github.io/${name}/`;
+    $('#link-dashboard').href = pagesUrl;
+    $('#link-actions').href = `https://github.com/${state.repo}/actions`;
+    $('#link-new-issue').href = `https://github.com/${state.repo}/issues/new?labels=agent-task`;
+    $('#link-deploy-md').href = `https://github.com/${state.repo}/blob/main/DEPLOY.md`;
+    setTimeout(() => {
+      $('#done-card').hidden = false;
+      $('#progress-fill').style.width = '100%';
+      $('#done-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 1000);
+  } catch (err) {
+    showError(`Error de red al lanzar el deploy: ${err.message}`);
     btn.disabled = false;
     btn.querySelector('span').textContent = 'Desplegar ahora';
-    return;
   }
-
-  showResult('deploy-result', `
-    <div class="result__ok">
-      <strong>✓ Workflow <code>reindex</code> lanzado</strong>
-      <div class="result__meta">Tarda 2-3 minutos. Puedes verlo en:</div>
-      <a class="result__link" href="https://github.com/${state.repo}/actions" target="_blank">https://github.com/${state.repo}/actions</a>
-    </div>
-  `);
-
-  // Mostrar card final
-  const owner = state.repo.split('/')[0];
-  const name = state.repo.split('/')[1];
-  const pagesUrl = `https://${owner}.github.io/${name}/`;
-  $('#link-dashboard').href = pagesUrl;
-  $('#link-actions').href = `https://github.com/${state.repo}/actions`;
-  $('#link-new-issue').href = `https://github.com/${state.repo}/issues/new?labels=agent-task`;
-  $('#link-deploy-md').href = `https://github.com/${state.repo}/blob/main/DEPLOY.md`;
-  setTimeout(() => {
-    $('#done-card').hidden = false;
-    $('#progress-fill').style.width = '100%';
-    $('#done-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, 1000);
 });
 
 // ─── Navigation back ───
