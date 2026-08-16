@@ -1,12 +1,15 @@
 // Service Worker para agent-brain dashboard
-// v1.0.8 — NETWORK-FIRST agresivo para evitar el bug de "veo la versión vieja"
+// v1.0.9 — fin del bucle de recarga
 // Estrategia:
 //   - HTML, CSS, JS, manifest: NETWORK-FIRST (siempre sirve la versión nueva)
 //   - Imágenes/iconos: cache-first (no cambian)
 //   - memory/*.json: network-first (datos vivos)
-// Al detectar nuevo SW, forza skipWaiting + clients.claim + reload automático.
+// Activación: SOLO mediante mensaje SKIP_WAITING del propio HTML (nunca
+// automática). Sin clients.claim(): la primera instalación no secuestra la
+// página abierta, así controllerchange no puede disparar recargas en bucle.
+// El HTML recarga como máximo UNA vez por sesión (guard con sessionStorage).
 
-const VERSION = 'v1.0.8';
+const VERSION = 'v1.0.9';
 const CACHE_STATIC = `agent-brain-static-${VERSION}`;
 const CACHE_DATA = `agent-brain-data-${VERSION}`;
 const CACHE_IMG = `agent-brain-img-${VERSION}`;
@@ -14,7 +17,7 @@ const CACHE_IMG = `agent-brain-img-${VERSION}`;
 // Las URLs llevan ?v=5 para coincidir EXACTAMENTE con lo que pide index.html:
 // cache.match() compara la URL completa, así que cachear './app.js' no servía
 // de fallback offline para la petición './app.js?v=5'.
-const ASSET_QUERY = '?v=5';
+const ASSET_QUERY = '?v=6';
 
 const STATIC_ASSETS = [
   './',
@@ -40,9 +43,11 @@ const STATIC_ASSETS = [
   './icon-maskable-512.png',
 ];
 
-// Install: pre-cachea assets estáticos
+// Install: pre-cachea assets estáticos.
+// NO skipWaiting aquí: la activación es explícita (mensaje SKIP_WAITING),
+// para no entrar en carreras con claim/recarga.
 self.addEventListener('install', (event) => {
-  console.log('[sw v1.0.8] install');
+  console.log('[sw v1.0.9] install');
   event.waitUntil(
     caches.open(CACHE_STATIC).then((cache) =>
       cache.addAll(STATIC_ASSETS).catch((err) => {
@@ -50,13 +55,13 @@ self.addEventListener('install', (event) => {
       })
     )
   );
-  // Forzar activación inmediata — NO esperar a que se cierren todas las pestañas
-  self.skipWaiting();
 });
 
-// Activate: limpia TODOS los caches viejos y toma control inmediato
+// Activate: limpia TODOS los caches viejos y avisa a los clients.
+// Sin clients.claim(): la página actual no cambia de controller a mitad de
+// carga. El control se aplica naturalmente en la siguiente navegación.
 self.addEventListener('activate', (event) => {
-  console.log('[sw v1.0.8] activate — purgando caches viejos');
+  console.log('[sw v1.0.9] activate — purgando caches viejos');
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
@@ -68,10 +73,6 @@ self.addEventListener('activate', (event) => {
           })
       )
     ).then(() => {
-      // Tomar control de TODOS los clients inmediatamente
-      return self.clients.claim();
-    }).then(() => {
-      // Avisar a los clients que hay nueva versión
       return self.clients.matchAll({ includeUncontrolled: true });
     }).then((clients) => {
       clients.forEach((client) => {
@@ -79,6 +80,24 @@ self.addEventListener('activate', (event) => {
       });
     })
   );
+});
+
+// Mensajes del HTML. SKIP_WAITING activa la nueva versión bajo demanda
+// (antes el HTML enviaba este mensaje pero el SW no lo escuchaba).
+// CLEAR_CACHE borra todos los caches (botón en Settings).
+self.addEventListener('message', (event) => {
+  const data = event.data;
+  if (data === 'SKIP_WAITING' || data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+    return;
+  }
+  if (data === 'CLEAR_CACHE' || data?.type === 'CLEAR_CACHE') {
+    event.waitUntil(
+      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).then(() => {
+        console.log('[sw] todos los caches borrados (CLEAR_CACHE)');
+      })
+    );
+  }
 });
 
 // Helper: NETWORK-FIRST con fallback a cache
