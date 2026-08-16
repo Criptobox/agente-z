@@ -3,9 +3,10 @@
 // Solo agentes con permiso 'write' lo pueden usar.
 // Las escrituras se acumulan y las commitea el workflow al final del job.
 
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { config } from '../config.js';
+import { isInsideRoot } from './file_read.js';
 
 export const file_write = {
   name: 'file_write',
@@ -23,7 +24,7 @@ export const file_write = {
     if (!path) throw new Error('path requerido');
     if (typeof content !== 'string') throw new Error('content debe ser string');
     const full = resolve(config.root, path);
-    if (!full.startsWith(config.root)) {
+    if (!isInsideRoot(full)) {
       throw new Error('Path fuera del repo no permitido');
     }
     mkdirSync(dirname(full), { recursive: true });
@@ -42,5 +43,3 @@ export const file_write = {
     return { ok: true, path, bytes: content.length };
   },
 };
-
-import { readFileSync } from 'node:fs';

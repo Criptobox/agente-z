@@ -34,8 +34,10 @@
         };
       case 'gemini':
         return {
-          endpoint: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-          headers: { 'Content-Type': 'application/json' },
+          // Key en header (no en la URL): las query strings quedan en logs de
+          // servidores, proxies y historial del navegador.
+          endpoint: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
           chatBody: (m, o) => ({
             contents: m.filter(x => x.role !== 'system').map(x => ({ role: x.role === 'assistant' ? 'model' : 'user', parts: [{ text: x.content }] })),
             systemInstruction: m.find(x => x.role === 'system') ? { parts: [{ text: m.find(x => x.role === 'system').content }] } : undefined,
@@ -127,7 +129,7 @@
   }
 
   // Providers que SABEMOS que bloquean llamadas desde browser (CORS)
-  // y por los que hay que rutear a través de un proxy CORS público.
+  // y que por tanto necesitan un backend propio que haga de puente.
   // Lista negra CORS — probada con curl -X OPTIONS:
   //   - groq: NO envía Access-Control-Allow-Origin en preflight
   //   - openai: ídem
@@ -137,60 +139,59 @@
   //   - openrouter, deepseek, gemini
   const CORS_BLOCKED_PROVIDERS = ['groq', 'openai', 'anthropic', 'github'];
 
-  // Múltiples proxies CORS de respaldo (corsproxy.io bloquea POSTs a APIs IA)
-  // Se intentan en orden hasta que uno funcione.
-  const CORS_PROXIES = [
-    (u) => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u),
-    (u) => 'https://corsproxy.io/?url=' + encodeURIComponent(u),
-    (u) => 'https://thingproxy.freeboard.io/fetch/' + u,
-  ];
+  // ⚠️ SEGURIDAD: antes se rutaba por proxies CORS públicos (allorigins,
+  // corsproxy.io, thingproxy) que recibían el header Authorization con la API
+  // key del usuario EN CLARO — podían robarla. Eliminados.
+  // La ÚNICa vía para providers con CORS bloqueado es la Edge Function propia
+  // (supabase/functions/chat-router, modo proxy): la key viaja solo entre el
+  // navegador y el Supabase del propio usuario.
+  function getEdgeProxyUrl() {
+    // URL explícita configurada en Settings (campo "Edge Function") tiene prioridad
+    const custom = localStorage.getItem('agent-brain-edge-function-url') || '';
+    if (custom) return custom.replace(/\/+$/, '');
+    // Si no, derivarla del proyecto Supabase configurado
+    const base = localStorage.getItem('agent-brain-supabase-url') || '';
+    if (!base) return '';
+    return base.replace(/\/+$/, '') + '/functions/v1/chat-router';
+  }
 
-  // Wrapper de fetch que intenta directo primero, y si falla CORS prueba con proxies.
   async function fetchWithCORS(url, options, provider) {
-    const needsProxy = CORS_BLOCKED_PROVIDERS.includes(provider);
-
-    // Si el provider está en lista negra CORS, ir directo al proxy
-    if (needsProxy) {
-      let lastErr = null;
-      for (const makeProxyUrl of CORS_PROXIES) {
-        const proxyUrl = makeProxyUrl(url);
-        try {
-          const res = await fetch(proxyUrl, options);
-          if (res.ok || (res.status >= 400 && res.status < 500)) {
-            // 4xx es respuesta válida del API (ej: 401 key inválida) — devolverla
-            return res;
-          }
-          // 5xx del proxy → probar siguiente
-          lastErr = new Error(`Proxy ${proxyUrl.slice(0, 40)}… devolvió ${res.status}`);
-        } catch (err) {
-          lastErr = err;
-          console.warn(`[streaming] proxy falló: ${err.message}, probando siguiente…`);
-        }
-      }
-      throw new Error(
-        `No se pudo conectar a ${provider} a través de ningún proxy CORS. ` +
-        `Último error: ${lastErr?.message || 'desconocido'}. ` +
-        `Recomendado: usá OpenRouter, DeepSeek o Gemini que funcionan directo desde el navegador.`
-      );
+    if (!CORS_BLOCKED_PROVIDERS.includes(provider)) {
+      // Provider CORS-friendly: directo, sin intermediarios.
+      return fetch(url, options);
     }
 
-    // Provider que SÍ soporta CORS — intentar directo, fallback a proxy si falla
+    const edgeUrl = getEdgeProxyUrl();
+    if (edgeUrl) {
+      const anonKey = localStorage.getItem('agent-brain-supabase-anon-key') || '';
+      const res = await fetch(edgeUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(anonKey ? { apikey: anonKey, Authorization: `Bearer ${anonKey}` } : {}),
+        },
+        body: JSON.stringify({
+          mode: 'proxy',
+          targetUrl: url,
+          targetHeaders: options.headers,
+          targetBody: options.body,
+        }),
+        signal: options.signal,
+      });
+      return res;
+    }
+
+    // Sin Edge Function configurada: intento directo (por si el provider
+    // habilitó CORS) y si falla, error accionable. NUNCA un proxy de terceros.
     try {
       return await fetch(url, options);
-    } catch (fetchErr) {
-      if (fetchErr.name === 'TypeError' || fetchErr.message.includes('Failed to fetch')) {
-        console.warn(`[streaming] ${provider} fetch directo falló (${fetchErr.message}), reintentando con proxies CORS…`);
-        for (const makeProxyUrl of CORS_PROXIES) {
-          const proxyUrl = makeProxyUrl(url);
-          try {
-            const res = await fetch(proxyUrl, options);
-            if (res.ok || (res.status >= 400 && res.status < 500)) return res;
-          } catch (err) {
-            console.warn(`[streaming] proxy fallback falló: ${err.message}`);
-          }
-        }
-      }
-      throw fetchErr;
+    } catch (err) {
+      if (err.name === 'AbortError') throw err;
+      throw new Error(
+        `${provider} bloquea llamadas directas desde el navegador (CORS) y no hay función puente configurada. ` +
+        `Opciones: (1) despliega la Edge Function chat-router de Supabase (supabase/functions/chat-router) y configura Supabase en Settings, ` +
+        `o (2) usa un provider compatible con navegador: OpenRouter, DeepSeek o Gemini.`
+      );
     }
   }
 

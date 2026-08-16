@@ -11,24 +11,32 @@ const CACHE_STATIC = `agent-brain-static-${VERSION}`;
 const CACHE_DATA = `agent-brain-data-${VERSION}`;
 const CACHE_IMG = `agent-brain-img-${VERSION}`;
 
+// Las URLs llevan ?v=5 para coincidir EXACTAMENTE con lo que pide index.html:
+// cache.match() compara la URL completa, así que cachear './app.js' no servía
+// de fallback offline para la petición './app.js?v=5'.
+const ASSET_QUERY = '?v=5';
+
 const STATIC_ASSETS = [
   './',
   './index.html',
-  './styles.css',
-  './app.js',
-  './streaming.js',
-  './settings.js',
-  './sales-forecast.js',
-  './background-runner.js',
-  './auth.js',
-  './graph.js',
-  './voice.js',
-  './tiendamax.js',
-  './supabase-client.js',
+  './styles.css' + ASSET_QUERY,
+  './app.js' + ASSET_QUERY,
+  './streaming.js' + ASSET_QUERY,
+  './settings.js' + ASSET_QUERY,
+  './sales-forecast.js' + ASSET_QUERY,
+  './background-runner.js' + ASSET_QUERY,
+  './auth.js' + ASSET_QUERY,
+  './graph.js' + ASSET_QUERY,
+  './voice.js' + ASSET_QUERY,
+  './tiendamax.js' + ASSET_QUERY,
+  './supabase-client.js' + ASSET_QUERY,
   './manifest.json',
+  './setup.html',
+  './favicon-180.png',
   './icon.svg',
   './icon-192.png',
   './icon-512.png',
+  './icon-maskable-192.png',
   './icon-maskable-512.png',
 ];
 

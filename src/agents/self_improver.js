@@ -20,6 +20,7 @@ import { resolve, join } from 'node:path';
 import { config, restApiHeaders } from '../config.js';
 import { complete } from '../models.js';
 import { listMemories } from '../memory.js';
+import { parseAgentJSON } from '../utils/json.js';
 
 // ── Carga lecciones listas para promover ──
 function loadPromotableLessons() {
@@ -221,9 +222,7 @@ async function main() {
     { jsonMode: true, temperature: 0.3 }
   );
 
-  const first = raw.indexOf('{');
-  const last = raw.lastIndexOf('}');
-  const result = JSON.parse(raw.slice(first, last + 1));
+  const result = parseAgentJSON(raw);
 
   if (result.empty || !result.proposals?.length) {
     console.log('[self_improver] no hay propuestas. Fin.');

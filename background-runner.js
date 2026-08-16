@@ -443,6 +443,10 @@
       panel = document.createElement('div');
       panel.id = 'notif-panel';
       panel.className = 'notif-panel';
+      // Crear OCULTO: sin esto, el primer click ve hidden===false y retornaba
+      // sin renderizar nada (y con .notif-panel{display:flex} sin regla [hidden],
+      // la caja quedaba abierta y vacía para siempre).
+      panel.hidden = true;
       document.body.appendChild(panel);
       panel.addEventListener('click', (e) => {
         if (e.target === panel) panel.hidden = true;

@@ -20,13 +20,28 @@ import { config, restApiHeaders } from './config.js';
 import { search, loadIndex, nextId, writeMemory } from './memory.js';
 import { complete } from './models.js';
 import { parseFrontmatter } from './memory.js';
+import { parseAgentJSON } from './utils/json.js';
 
 // ── Parseo de args/env ──
-function parseTrigger() {
+async function parseTrigger() {
   // Event payload (cuando corre dentro de Actions)
   const eventPath = process.env.GITHUB_EVENT_PATH;
   if (eventPath && existsSync(eventPath)) {
     const event = JSON.parse(readFileSync(eventPath, 'utf8'));
+    // workflow_dispatch: el payload no tiene .issue — usar ISSUE_NUMBER si llegó por env
+    if (!event.issue && process.env.ISSUE_NUMBER) {
+      const num = parseInt(process.env.ISSUE_NUMBER, 10);
+      let issue = { number: num, title: '', body: '', labels: [{ name: 'agent-task' }] };
+      if (config.token && config.repo) {
+        try {
+          const res = await fetch(`https://api.github.com/repos/${config.repo}/issues/${num}`, { headers: restApiHeaders() });
+          if (res.ok) issue = await res.json();
+        } catch (err) {
+          console.error(`[orchestrator] no se pudo leer el issue #${num} de la API: ${err.message}`);
+        }
+      }
+      return { event: { issue }, eventName: 'manual' };
+    }
     return { event, eventName: process.env.GITHUB_EVENT_NAME };
   }
   // Llamada manual con --issue=N
@@ -179,12 +194,8 @@ Responde en JSON estricto con formato:
       ],
       { jsonMode: true, temperature: 0.1 }
     );
-    // Extraer JSON
-    const first = raw.indexOf('{');
-    const last = raw.lastIndexOf('}');
-    if (first >= 0 && last > first) {
-      return JSON.parse(raw.slice(first, last + 1));
-    }
+    // Extraer JSON (robusto: fences, escapes, trailing commas)
+    return parseAgentJSON(raw);
   } catch (err) {
     console.error('[orchestrator] proposeDoD falló:', err.message);
   }
@@ -254,7 +265,7 @@ async function postContextComment(issue, task, memResults) {
 
 // ── Manejador principal ──
 async function main() {
-  const { event, eventName } = parseTrigger();
+  const { event, eventName } = await parseTrigger();
   if (!event) {
     console.error('No se detectó trigger. Usa --issue=N o ejecuta dentro de Actions.');
     process.exit(1);
@@ -299,7 +310,13 @@ async function handleApprove(issue, comment) {
   if (!existsSync(tasksDir)) return;
   const files = readdirSyncSafe(tasksDir).filter((f) => f.endsWith('.json'));
   for (const f of files) {
-    const t = JSON.parse(readFileSync(join(tasksDir, f), 'utf8'));
+    let t;
+    try {
+      t = JSON.parse(readFileSync(join(tasksDir, f), 'utf8'));
+    } catch (err) {
+      console.error(`[orchestrator] task JSON corrupto, ignorando (${f}): ${err.message}`);
+      continue;
+    }
     if (t.issue === issue.number && t.status === 'needs_human') {
       t.status = 'in_progress';
       t.approved_by = comment.user?.login || 'unknown';

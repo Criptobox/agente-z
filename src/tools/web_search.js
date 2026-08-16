@@ -138,12 +138,12 @@ export const web_search = {
   },
   permissions: ['web'],
   async run({ query, maxResults = 5 }, ctx) {
-    if (!config.webEnabled) {
-      throw new Error('web_search está deshabilitado (WEB_ENABLED=false). Habilítalo en .env o Variables para usar tools web.');
-    }
     if (!query) throw new Error('query requerido');
     if (typeof query !== 'string' || query.length > 200) {
       throw new Error('query debe ser string de máx 200 chars');
+    }
+    if (!config.webEnabled) {
+      throw new Error('web_search está deshabilitado (WEB_ENABLED=false). Habilítalo en .env o Variables para usar tools web.');
     }
     const limit = Math.min(Math.max(maxResults || 5, 1), 8);
 

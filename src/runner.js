@@ -24,6 +24,7 @@ import { complete, getMetrics } from './models.js';
 import { buildContext, serializeContext } from './context.js';
 import { writeMemory, nextId, saveIndex, buildIndex, saveVectors, loadVectors } from './memory.js';
 import { runTool, listTools } from './tools/index.js';
+import { gate_check } from './tools/gate_check.js';
 import { parseFrontmatter } from './memory.js';
 
 // ── Parseo de args ──
@@ -31,8 +32,9 @@ function parseArgs() {
   const args = {};
   for (const a of process.argv.slice(2)) {
     if (a.startsWith('--')) {
-      const [k, v] = a.slice(2).split('=');
-      args[k] = v ?? true;
+      const eq = a.indexOf('=');
+      if (eq === -1) args[a.slice(2)] = true;
+      else args[a.slice(2, eq)] = a.slice(eq + 1);
     }
   }
   return {
@@ -227,6 +229,58 @@ function persistMemoryWrites(writes, task, agentName) {
   return results;
 }
 
+// ── VERIFICACIÓN: ejecuta los gates del DoD con la tool gate_check ──
+// Sección 12.2 del spec: el agente que hace el trabajo nunca declara el éxito.
+// La evidencia viene de la herramienta, no de la opinión del modelo.
+//   - gates test/assertion → se ejecutan con sanitización
+//   - diff_scan/security_scan sin files_to_scan explícito → se escanean los
+//     archivos que el agente tocó este turno (via file_write)
+async function verifyGates(task, filesWritten) {
+  const gates = task.definition_of_done || [];
+  const results = [];
+  const skipped = [];
+  if (!gates.length) return { results, skipped, gates_passed: [], gates_failed: [] };
+
+  for (const gate of gates) {
+    if (!gate || !gate.id) continue;
+    const input = {
+      gate_id: gate.id,
+      method: gate.method,
+      command: gate.command,
+      expect: gate.expect,
+    };
+    const isScan = gate.method === 'diff_scan' || gate.method === 'security_scan';
+    if (isScan && !Array.isArray(gate.files_to_scan)) {
+      if (filesWritten.length > 0) {
+        input.files_to_scan = filesWritten;
+      } else {
+        skipped.push(`${gate.id} (${gate.method} sin files_to_scan y el agente no tocó archivos este turno)`);
+        continue;
+      }
+    } else if (Array.isArray(gate.files_to_scan)) {
+      input.files_to_scan = gate.files_to_scan;
+    }
+    try {
+      const r = await gate_check.run(input, { task });
+      results.push({
+        id: gate.id,
+        method: gate.method || 'test',
+        pass: r.pass === true,
+        reason: (r.reason || (r.pass ? 'OK' : `exit_code=${r.exitCode}`)).slice(0, 300),
+      });
+    } catch (err) {
+      results.push({ id: gate.id, method: gate.method || 'test', pass: false, reason: `error ejecutando gate: ${err.message}` });
+    }
+  }
+
+  return {
+    results,
+    skipped,
+    gates_passed: results.filter((r) => r.pass).map((r) => r.id),
+    gates_failed: results.filter((r) => !r.pass).map((r) => r.id),
+  };
+}
+
 // ── Registra el episodio (intent) ──
 function recordEpisode(task, agentName, output, attemptNum) {
   const id = nextId('episode');
@@ -249,16 +303,54 @@ function recordEpisode(task, agentName, output, attemptNum) {
 }
 
 // ── Actualiza el estado de la tarea ──
-function updateTask(task, output, episodeId) {
+// Reglas del loop de convergencia (spec, pasos 4-7):
+//   - needs_human → 'needs_human'
+//   - gates verificados y TODOS en verde → 'completed' (confidence 98, cerrar)
+//   - gates fallando y presupuesto agotado → 'stuck' (informe para humano;
+//     agent-run.yml dispara el learner al ver 'stuck')
+//   - gates fallando con presupuesto → handoff (por defecto al agente 'test',
+//     que es un agente DISTINTO al que trabajó)
+function updateTask(task, output, episodeId, verification) {
   const path = resolve(config.root, config.paths.tasks, `${task.id}.json`);
+  const nextAttempt = (task.current_attempt || 0) + 1;
+  const maxAttempts = task.budget?.max_attempts || 5;
+  const gatesFailed = verification?.gates_failed || [];
+  const gatesChecked = (verification?.results || []).length;
+
+  let status;
+  let nextAgent = output.handoff?.next_agent || null;
+  let nextTaskHint = output.handoff?.next_task || null;
+
+  if (output.needs_human) {
+    status = 'needs_human';
+  } else if (gatesChecked > 0 && gatesFailed.length === 0) {
+    // Todos los gates verificados en verde → cerrar (aunque el agente propusiera
+    // continuar, la evidencia objetiva manda).
+    status = 'completed';
+    nextAgent = null;
+  } else if (gatesFailed.length > 0 && nextAttempt >= maxAttempts) {
+    // Presupuesto de intentos agotado con gates rojos → STUCK, no "no pude".
+    status = 'stuck';
+    nextAgent = null;
+  } else if (gatesFailed.length > 0 && !nextAgent) {
+    // Gates rojos y el agente no propuso continuación → verificador independiente.
+    status = 'handoff';
+    nextAgent = 'test';
+    nextTaskHint = `Gates fallidos: ${gatesFailed.join(', ')}. Diagnosticar y proponer estrategia distinta a las falladas.`;
+  } else {
+    status = nextAgent ? 'handoff' : 'completed';
+  }
+
   const updated = {
     ...task,
-    status: output.needs_human ? 'needs_human' : (output.handoff?.next_agent ? 'handoff' : 'completed'),
-    current_attempt: (task.current_attempt || 0) + 1,
+    status,
+    current_attempt: nextAttempt,
     last_episode: episodeId,
     last_agent: task.assigned,
-    next_agent: output.handoff?.next_agent || null,
-    next_task_hint: output.handoff?.next_task || null,
+    next_agent: nextAgent,
+    next_task_hint: nextTaskHint,
+    gates_passed: verification?.gates_passed || [],
+    gates_failed: gatesFailed,
     updated: new Date().toISOString(),
   };
   updated.handoffs = task.handoffs || [];
@@ -269,14 +361,16 @@ function updateTask(task, output, episodeId) {
     route: output.route,
     completed: output.handoff?.completed || [],
     not_completed: output.handoff?.not_completed || [],
-    next_agent: output.handoff?.next_agent,
+    next_agent: nextAgent,
+    gates_passed: updated.gates_passed,
+    gates_failed: gatesFailed,
   });
   writeFileSync(path, JSON.stringify(updated, null, 2) + '\n', 'utf8');
   return updated;
 }
 
 // ── Comenta el handoff en el Issue ──
-async function postHandoffComment(task, agentName, output) {
+async function postHandoffComment(task, agentName, output, verification) {
   if (!task.issue) return null;
   const lines = [];
   lines.push(`### Handoff de \`${agentName}\``);
@@ -284,6 +378,15 @@ async function postHandoffComment(task, agentName, output) {
   lines.push(`**Ruta declarada:** ${output.route}`);
   if (output.reused_memory?.length) {
     lines.push(`**Memoria reutilizada:** ${output.reused_memory.join(', ')}`);
+  }
+  if (verification && (verification.results.length || verification.skipped.length)) {
+    lines.push('', '**Gates del DoD (evidencia de `gate_check`, no opinión del agente):**');
+    for (const r of verification.results) {
+      lines.push(`- ${r.pass ? '✅' : '❌'} \`${r.id}\` (${r.method})${r.pass ? '' : ` — ${r.reason}`}`);
+    }
+    for (const s of verification.skipped) {
+      lines.push(`- ⏭️ \`${s}\``);
+    }
   }
   if (output.findings?.length) {
     lines.push('', '**Findings:**');
@@ -416,15 +519,35 @@ async function main() {
   const writesResult = persistMemoryWrites(output.memory_writes || [], task, args.agent);
   console.log(`[runner] memoria escrita: ${writesResult.filter((w) => w.written).length} archivos`);
 
-  // Registrar episodio
+  // ─── VERIFICACIÓN OBJETIVA: ejecutar los gates del DoD ───
+  // El agente que trabaja nunca declara el éxito — esta es la única evidencia.
+  // Los escaneos sin files_to_scan examinan lo que el agente tocó este turno.
+  const filesWritten = allToolResults
+    .filter((r) => r.name === 'file_write' && r.ok && r.input?.path)
+    .map((r) => r.input.path);
+  const verification = await verifyGates(task, filesWritten);
+  if (verification.results.length || verification.skipped.length) {
+    console.log(`[runner] gates: verificados=${verification.results.length} ` +
+      `pasados=[${verification.gates_passed.join(',')}] fallidos=[${verification.gates_failed.join(',')}] ` +
+      `omitidos=${verification.skipped.length}`);
+  } else {
+    console.log('[runner] gates: la tarea no define gates verificables');
+  }
+  output.gates_passed = verification.gates_passed;
+  output.gates_failed = verification.gates_failed;
+
+  // Registrar episodio (ahora con gates reales — devil/learner/context los consumen)
   const episodeId = recordEpisode(task, args.agent, output, ctx.task.attempt);
   console.log(`[runner] episodio registrado: ${episodeId}`);
 
   // Actualizar tarea
-  const updatedTask = updateTask(task, output, episodeId);
+  const updatedTask = updateTask(task, output, episodeId, verification);
+  if (updatedTask.status === 'stuck') {
+    console.log(`[runner] STUCK: intentos=${updatedTask.current_attempt}/${updatedTask.budget?.max_attempts || 5} gates_fallidos=[${verification.gates_failed.join(',')}]`);
+  }
 
   // Comentar handoff en el issue
-  const commentInfo = await postHandoffComment(task, args.agent, output);
+  const commentInfo = await postHandoffComment(task, args.agent, output, verification);
 
   // Rebuild index + vectors
   saveIndex(buildIndex());
@@ -465,7 +588,7 @@ async function main() {
     console.error('[runner] no se pudo escribir budget log:', err.message);
   }
 
-  console.log(`[runner] turno completado. Próximo agente: ${output.handoff?.next_agent || '(ninguno)'}`);
+  console.log(`[runner] turno completado. Estado tarea: ${updatedTask.status}. Próximo agente: ${updatedTask.next_agent || '(ninguno)'}`);
 
   // Output final para que el workflow lo use si quiere
   return {
@@ -474,7 +597,14 @@ async function main() {
     route: output.route,
     episode: episodeId,
     memoryWrites: writesResult,
-    nextAgent: output.handoff?.next_agent,
+    gates: {
+      checked: verification.results.length,
+      passed: verification.gates_passed,
+      failed: verification.gates_failed,
+      skipped: verification.skipped,
+    },
+    taskStatus: updatedTask.status,
+    nextAgent: updatedTask.next_agent,
     needsHuman: output.needs_human === true,
     metrics,
   };

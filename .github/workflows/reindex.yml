@@ -68,7 +68,11 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # ref: main — el job 1 acaba de pushear el reindex; sin esto el checkout
+      # usa el SHA original del evento y publica los datos de la víspera.
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Build dashboard artifact
         run: |
