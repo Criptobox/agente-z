@@ -1,14 +1,14 @@
 {
-  "total": 158,
+  "total": 181,
   "byType": {
     "error": 1,
     "criteria": 3,
     "episode": 2,
-    "budget": 151,
+    "budget": 174,
     "project": 1
   },
   "stale": 0,
   "lowConf": 0,
   "promotedRules": 0,
-  "generatedAt": "2026-08-19T06:36:16.077Z"
+  "generatedAt": "2026-08-20T06:38:06.266Z"
 }
